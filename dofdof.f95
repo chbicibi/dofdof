@@ -12,54 +12,80 @@ module dof_kriging
   private
   public :: model, init_krig, load_krig, estimate, estimate2
 
-  type(TKriging) :: model(3)
+  type(TKriging), allocatable :: model(:)
+  character(*), parameter :: krig_input_file = "kriging.inp"
+  integer, parameter :: ga_pop_size = 100
+  integer, parameter :: ga_steps = 10
 
   contains
 
-  subroutine init_krig(num_var, pop_size, steps, scale)
+  subroutine load_inputfile(num_model, num_var, scales, lbounds, ubounds, table_files, theta_files)
     implicit none
-    integer, intent(in) :: num_var, pop_size, steps
-    real(8), intent(in) :: scale(:)
+    integer, intent(out) :: num_model, num_var
+    real(8), intent(out), allocatable :: scales(:), lbounds(:), ubounds(:)
+    character(:), intent(out), allocatable :: table_files(:), theta_files(:)
+    integer :: unit, i
 
+    open(newunit=unit, file=krig_input_file, status="old")
+    read(unit, *) num_model
+    allocate(model(num_model))
+    allocate(character(60) :: table_files(num_model))
+    allocate(character(60) :: theta_files(num_model))
+    do i = 1, num_model
+      read(unit, *) table_files(i)
+    end do
+    do i = 1, num_model
+      read(unit, *) theta_files(i)
+    end do
+    read(unit, *) num_var
+    allocate(scales(num_var))
+    allocate(lbounds(num_var))
+    allocate(ubounds(num_var))
+    do i = 1, num_var
+      read(unit, *) scales(i)
+    end do
+    do i = 1, num_var
+      read(unit, *) lbounds(i), ubounds(i)
+    end do
+  end subroutine load_inputfile
+
+  subroutine init_krig
+    implicit none
     type(TSOGA) :: optimizer
-    character(:), allocatable :: input_files(:), theta_files(:)
-
+    character(:), allocatable :: table_files(:), theta_files(:)
     real(8), allocatable :: variables(:, :), objectives(:), theta(:)
-    integer :: num_sample
-    integer :: unit, i, j, idum
+    real(8), allocatable :: scales(:), lbounds(:), ubounds(:)
+    integer :: num_model, num_var, num_sample
+    integer :: unit, i, j, k, idummy, nskip
 
-    input_files = ["table_xl.txt", "table_ym.txt", "table_zn.txt"]
-    theta_files = ["btheta_cx_2", "btheta_cm_2", "btheta_cz_2"]
-
-    call optimizer%initialize(nx=num_var, N=pop_size, selection="R", crossover="BLX", mutation="PM")
+    call load_inputfile(num_model, num_var, scales, lbounds, ubounds, table_files, theta_files)
+    call optimizer%initialize(nx=num_var, N=ga_pop_size, selection="R", crossover="BLX", mutation="PM")
     optimizer%elite_preservation = .true.
     optimizer%sharing = .true.
+    allocate(theta(num_var))
 
-    do i = 1, 3
-      open(newunit=unit, file=input_files(i), status="old")
+    do i = 1, num_model
+      open(newunit=unit, file=table_files(i), status="old")
         read(unit, *) num_sample
         allocate(variables(num_var, num_sample))
         allocate(objectives(num_sample))
-        allocate(theta(num_var))
         do j = 1, num_sample
           if (i == 2) then
-            read(unit, *) idum, variables(:, j), idum, objectives(j)
+            nskip = 1
           else
-            read(unit, *) idum, variables(:, j), objectives(j)
+            nskip = 0
           end if
+          read(unit, *) idummy, variables(:, j), (idummy, k=1, nskip), objectives(j)
         end do
       close(unit)
 
       call model(i)%initialize(variables, objectives)
-      call model(i)%set_bounds([-5d0, -40d0, 0.1d0], [10d0, 40d0, 0.5d0])
-      call model(i)%set_scale(scale)
+      call model(i)%set_bounds(lbounds, ubounds)
+      call model(i)%set_scale(scales)
 
       call optimizer%set_problem(model(i))
       call optimizer%prepare_calculation
-      call optimizer%run(steps)
-
-      ! index = minloc([(optimizer%population(i)%indiv%o1(), i = 1, pop_size)], dim=1)
-      ! theta = optimizer%population(index)%indiv%variables
+      call optimizer%run(ga_steps)
       call optimizer%best(theta)
 
       open(newunit=unit, file=theta_files(i), status="replace")
@@ -68,78 +94,69 @@ module dof_kriging
       close(unit)
 
       call model(i)%calc_likelihood(theta)
-      deallocate(variables, objectives, theta)
+      deallocate(variables, objectives)
     end do
   end subroutine init_krig
 
-  subroutine load_krig(num_var)
+  subroutine load_krig
     implicit none
-    integer, intent(in) :: num_var
+    character(:), allocatable :: table_files(:), theta_files(:)
+    real(8), allocatable :: variables(:, :), objectives(:), theta(:)
+    real(8), allocatable :: scales(:), lbounds(:), ubounds(:), dummy(:)
+    integer :: num_model, num_var, num_sample
+    integer :: unit, i, j, k, idummy, nskip
 
-    character(:), allocatable :: input_files(:), theta_files(:)
+    call load_inputfile(num_model, num_var, dummy, lbounds, ubounds, table_files, theta_files)
+    allocate(theta(num_var))
+    allocate(scales(num_var))
 
-    real(8), allocatable :: variables(:, :), objectives(:), theta(:), scale(:)
-    integer :: num_sample
-    integer :: unit, i, j, idum
-
-    input_files = ["table_xl.txt", "table_ym.txt", "table_zn.txt"]
-    theta_files = ["btheta_cx_2", "btheta_cm_2", "btheta_cz_2"]
-
-    do i = 1, 3
-      open(newunit=unit, file=input_files(i), status="old")
+    do i = 1, num_model
+      open(newunit=unit, file=table_files(i), status="old")
         read(unit, *) num_sample
+        print *, num_sample
         allocate(variables(num_var, num_sample))
         allocate(objectives(num_sample))
-        allocate(theta(num_var))
-        allocate(scale(num_var))
         do j = 1, num_sample
           if (i == 2) then
-            read(unit, *) idum, variables(:, j), idum, objectives(j)
+            nskip = 1
           else
-            read(unit, *) idum, variables(:, j), objectives(j)
+            nskip = 0
           end if
+          read(unit, *) idummy, variables(:, j), (idummy, k=1, nskip), objectives(j)
         end do
       close(unit)
 
       call model(i)%initialize(variables, objectives)
-      call model(i)%set_bounds([-5d0, -40d0, 0.1d0], [10d0, 40d0, 0.5d0])
+      call model(i)%set_bounds(lbounds, ubounds)
 
       open(newunit=unit, file=theta_files(i), status="old")
-        read(unit, *) scale
+        read(unit, *) scales
         read(unit, *) theta
       close(unit)
 
-      call model(i)%set_scale(scale)
+      call model(i)%set_scale(scales)
       call model(i)%calc_likelihood(theta)
-      deallocate(variables, objectives, theta, scale)
+      deallocate(variables, objectives)
     end do
   end subroutine load_krig
 
-  real function estimate(model_no, aa, elv, ma) result(krig_out)
+  real function estimate(model_no, variables) result(krig_out)
     implicit none
     integer, intent(in) :: model_no
-    real, intent(in) :: aa, elv, ma
+    real, intent(in) :: variables(:)
 
-    krig_out = model(model_no)%estimate(dble([aa, elv, ma]))
+    krig_out = model(model_no)%estimate(dble(variables))
   end function estimate
-
-  real function estimate_2dv(model_no, aa, ma) result(krig_out)
-    implicit none
-    integer, intent(in) :: model_no
-    real, intent(in) :: aa, ma
-
-    krig_out = model(model_no)%estimate(dble([aa, ma]))
-  end function estimate_2dv
 
   real function estimate2(model_no, aa, elv, ma) result(krig_out)
     implicit none
     integer, intent(in) :: model_no
     real, intent(in) :: aa, elv, ma
-    character(:), allocatable :: input_files(:), theta_files(:)
+    character(:), allocatable :: table_files(:), theta_files(:)
     real :: dum
     integer :: unit
 
-    input_files = ["table_xl.txt", "table_ym.txt", "table_zn.txt"]
+    table_files = ["table_xl.txt", "table_ym.txt", "table_zn.txt"]
     theta_files = ["btheta_cx", "btheta_cm", "btheta_cz"]
 
     open(newunit=unit, file='inp', status='replace')
@@ -148,7 +165,7 @@ module dof_kriging
     write(unit, *) ma
     close(unit)
 
-    call system('cp -r ' // input_files(model_no) // ' table.txt')
+    call system('cp -r ' // table_files(model_no) // ' table.txt')
 
     open(newunit=unit, file='ei_inp', status='replace')
     write(unit, *) 1
@@ -221,19 +238,20 @@ program main     ! 6DoF main !
   ! initialize
   ! ============================================================================
 
-  print *, 'init? 0=read btheta 1=write btheta 2=check kriging'
+  print *, 'init? 0=read btheta 1=init btheta 2=check kriging'
   read *, is_init_krig
 
-  if (is_init_krig == 1) then
-    ! θ初期化用
-    ! Kriging変数を変える場合 => num_var, scaleを変える
-    call init_krig(num_var=3, pop_size=100, steps=100, scale=[100d0, 100d0, 100d0])
+  if (is_init_krig == 0) then
+    call load_krig
+  else if (is_init_krig == 1) then
+    call init_krig
   else if (is_init_krig == 2) then
-    call load_krig(num_var=3)
+    call load_krig
     call chech_kriging
     stop
   else
-    call load_krig(num_var=3)
+    print *, "Error: invalid number"
+    call exit(1)
   end if
 
   pi=4*atan(1.0) !definition of pi
@@ -298,9 +316,9 @@ program main     ! 6DoF main !
     do n = start, end
       if (mod(n, 10000) == 0 .and. n > start) print*, counter, n, "step calculating..."
       ! call coef_pred
-      cx = estimate(1, aa(n), elv(n), ma(n))
-      cm = estimate(2, aa(n), elv(n), ma(n))
-      cz = estimate(3, aa(n), elv(n), ma(n))
+      cx = estimate(1, [aa(n), elv(n), ma(n)])
+      cm = estimate(2, [aa(n), elv(n), ma(n)])
+      cz = estimate(3, [aa(n), elv(n), ma(n)])
       cxh(n) = cx
       cmh(n) = cm
       czh(n) = cz
@@ -743,7 +761,7 @@ subroutine chech_kriging
   real :: a, e, m, y1, y2, y3
   integer :: unit1, unit2, unit3, i, j
 
-  ! call init_krig(num_var=3, pop_size=50)
+  ! call init_krig(num_var=3, ga_pop_size=50)
   ! call load_krig(num_var=3)
 
   open(newunit=unit1, file="test1.csv", status="replace")
@@ -758,9 +776,9 @@ subroutine chech_kriging
         ! e = 5
         ! m = j * 0.004 + 0.1
         m = 0.4
-        y1 = estimate(1, a, e, m)
-        y2 = estimate(2, a, e, m)
-        y3 = estimate(3, a, e, m)
+        y1 = estimate(1, [a, e, m])
+        y2 = estimate(2, [a, e, m])
+        y3 = estimate(3, [a, e, m])
         write(unit1, "(3(f0.10','))") a, e, y1
         write(unit2, "(3(f0.10','))") a, e, y2
         write(unit3, "(3(f0.10','))") a, e, y3
