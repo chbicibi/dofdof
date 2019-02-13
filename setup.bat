@@ -11,7 +11,7 @@ if "%1"=="" (
 )
 echo %OS%
 if "%OS%"=="Windows_NT" (
-  del %EXE_FILE% > NUL 2>&1
+  del %EXE_FILE% >NUL 2>&1
 ) else (
   rm -f %EXE_FILE%
 )
@@ -50,5 +50,5 @@ call :link %EXE_FILE% dofdof.o
 :: call :compile dof_main
 :: call :link %EXE_FILE% dof_kriging.o dof_rk4.o dof_flight.o dof_main.o
 
-del *.o *.mod *.smod > NUL 2>&1
+del *.o *.mod *.smod >NUL 2>&1
 exit /b
