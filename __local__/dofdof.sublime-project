@@ -1,0 +1,28 @@
+{
+  "folders":
+  [
+    {
+      "file_include_patterns":
+      [
+        "*.f",
+        "*.f95",
+        "*.f08",
+        "*.txt"
+      ],
+      "folder_include_patterns":
+      [
+        "src"
+      ],
+      "name": "dofdof",
+      "path": "C:\\yam\\Studies\\Projects\\SixDoF"
+    }
+  ],
+  "settings":
+  {
+    "font_face": "Ricty",
+    "font_size": 12,
+    "indent_to_bracket": true,
+    "rulers": [80],
+    "tab_size": 4,
+  }
+}
