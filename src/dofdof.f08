@@ -43,60 +43,60 @@ module equation
     !=======================================================================
 
     !-------translational motion
-    real(8) function fu(velocity, q, w, r, v, tht)
-        real(8), intent(in) :: velocity, q, w, r, v, tht
+    real(8) function fu(vel2, q, w, r, v, tht)
+        real(8), intent(in) :: vel2, q, w, r, v, tht
 
         fu = -q * w + r * v - grav * sin(tht) &
-           + rho * velocity ** 2 * s_ref * cx / (2 * m_body)
+           + rho * vel2 * s_ref * cx / (2 * m_body)
     end function fu
 
-    real(8) function fv(velocity, r, u, p, w, tht, phi)
-        real(8), intent(in) :: velocity, r, u, p, w, tht, phi
+    real(8) function fv(vel2, r, u, p, w, tht, phi)
+        real(8), intent(in) :: vel2, r, u, p, w, tht, phi
 
         fv = -r * u + p * w + grav * cos(tht) * sin(phi) &
-           + rho * velocity ** 2 * s_ref * cy / (2 * m_body)
+           + rho * vel2 * s_ref * cy / (2 * m_body)
     end function fv
 
 
-    real(8) function fw(velocity, p, v, q, u, tht, phi)
-        real(8), intent(in) :: velocity, p, v, q, u, tht, phi
+    real(8) function fw(vel2, p, v, q, u, tht, phi)
+        real(8), intent(in) :: vel2, p, v, q, u, tht, phi
 
         fw = -p * v + q * u + grav * cos(tht) * cos(phi) &
-           + rho * velocity ** 2 * s_ref * cz / (2 * m_body)
+           + rho * vel2 * s_ref * cz / (2 * m_body)
     end function fw
 
 
     !-------angular acceleration
-    real(8) function fp(velocity, p, q, r)
-        real(8), intent(in) :: velocity, p, q, r
+    real(8) function fp(vel2, p, q, r)
+        real(8), intent(in) :: vel2, p, q, r
         real(8) :: roll, yaw
 
-        roll = ((iy - iz) * q * r + ixz * p * q) &
-             + rho * velocity ** 2 * s_ref * b_span * cl / 2
-        yaw = ((ix - iy) * p * q - ixz * q * r) &
-            + rho * velocity ** 2 * s_ref * b_span * cn / 2
+        roll = (iy - iz) * q * r + ixz * p * q &
+             + rho * vel2 * s_ref * b_span * cl / 2
+        yaw = (ix - iy) * p * q - ixz * q * r &
+            + rho * vel2 * s_ref * b_span * cn / 2
         fp = (roll / ix + ixz / ix * yaw / iz) / (1 - ixz ** 2 / (ix * iz))
     end function fp
 
 
-    real(8) function fq(velocity, p, r)
-        real(8), intent(in) :: velocity, p, r
+    real(8) function fq(vel2, p, r)
+        real(8), intent(in) :: vel2, p, r
         real(8) :: pitch
 
         pitch = (iz - ix) * r * p + ixz * (r ** 2 - p ** 2) &
-              + rho * velocity ** 2 * s_ref * mac * cm / 2
+              + rho * vel2 * s_ref * mac * cm / 2
         fq = pitch / iy
     end function fq
 
 
-    real(8) function fr(velocity, p, q, r)
-        real(8), intent(in) :: velocity, p, q, r
+    real(8) function fr(vel2, p, q, r)
+        real(8), intent(in) :: vel2, p, q, r
         real(8) :: roll, yaw
 
         roll = (iy - iz) * q * r + ixz * p * q &
-             + rho * velocity ** 2 * s_ref * b_span * cl / 2
+             + rho * vel2 * s_ref * b_span * cl / 2
         yaw = (ix - iy) * p * q - ixz * q * r &
-            + rho * velocity ** 2 * s_ref * b_span * cn / 2
+            + rho * vel2 * s_ref * b_span * cn / 2
         fr = yaw / iz + ixz / iz * roll / ix / (1 - ixz ** 2 / (ix * iz))
     end function fr
 
@@ -147,54 +147,54 @@ module equation
         real(8) :: k3_phi, k3_tht, k3_psi
         real(8) :: k4_phi, k4_tht, k4_psi
 
-        real(8) :: velocity
+        real(8) :: vel2
 
-        velocity = sqrt(u ** 2 + v ** 2 + w ** 2)
+        vel2 = u ** 2 + v ** 2 + w ** 2
 
         !-------------------k1
-        k1_u = delta_t * fu(velocity, q, w, r, v, tht)
-        k1_v = delta_t * fv(velocity, r, u, p, w, tht, phi)
-        k1_w = delta_t * fw(velocity, p, v, q, u, tht, phi)
+        k1_u = delta_t * fu(vel2, q, w, r, v, tht)
+        k1_v = delta_t * fv(vel2, r, u, p, w, tht, phi)
+        k1_w = delta_t * fw(vel2, p, v, q, u, tht, phi)
 
-        k1_p = delta_t * fp(velocity, p, q, r)
-        k1_q = delta_t * fq(velocity, p, r)
-        k1_r = delta_t * fr(velocity, p, q, r)
+        k1_p = delta_t * fp(vel2, p, q, r)
+        k1_q = delta_t * fq(vel2, p, r)
+        k1_r = delta_t * fr(vel2, p, q, r)
 
         k1_psi = delta_t * fpsi(q, r, phi, tht)
         k1_tht = delta_t * ftht(q, r, phi, tht)
         k1_phi = delta_t * fphi(p, q, r, phi, tht)
         !-------------------k2
-        k2_u = delta_t * fu(velocity, q+k1_q/2, w+k1_w/2, r+k1_r/2, v+k1_v/2, tht+k1_tht/2)
-        k2_v = delta_t * fv(velocity, r+k1_r/2, u+k1_u/2, p+k1_p/2, w+k1_w/2, tht+k1_tht/2, phi+k1_phi/2)
-        k2_w = delta_t * fw(velocity, p+k1_p/2, v+k1_v/2, q+k1_q/2, u+k1_u/2, tht+k1_tht/2, phi+k1_phi/2)
+        k2_u = delta_t * fu(vel2, q+k1_q/2, w+k1_w/2, r+k1_r/2, v+k1_v/2, tht+k1_tht/2)
+        k2_v = delta_t * fv(vel2, r+k1_r/2, u+k1_u/2, p+k1_p/2, w+k1_w/2, tht+k1_tht/2, phi+k1_phi/2)
+        k2_w = delta_t * fw(vel2, p+k1_p/2, v+k1_v/2, q+k1_q/2, u+k1_u/2, tht+k1_tht/2, phi+k1_phi/2)
 
-        k2_p = delta_t * fp(velocity, p+k1_p/2, q+k1_q/2, r+k1_r/2)
-        k2_q = delta_t * fq(velocity, p+k1_p/2, r+k1_r/2)
-        k2_r = delta_t * fr(velocity, p+k1_p/2, q+k1_q/2, r+k1_r/2)
+        k2_p = delta_t * fp(vel2, p+k1_p/2, q+k1_q/2, r+k1_r/2)
+        k2_q = delta_t * fq(vel2, p+k1_p/2, r+k1_r/2)
+        k2_r = delta_t * fr(vel2, p+k1_p/2, q+k1_q/2, r+k1_r/2)
 
         k2_psi = delta_t * fpsi(q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)
         k2_tht = delta_t * ftht(q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)
         k2_phi = delta_t * fphi(p+k1_p/2, q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)
         !-------------------k3
-        k3_u = delta_t * fu(velocity, q+k2_q/2, w+k2_w/2, r+k2_r/2, v+k2_v/2, tht+k2_tht/2)
-        k3_v = delta_t * fv(velocity, r+k2_r/2, u+k2_u/2, p+k2_p/2, w+k2_w/2, tht+k2_tht/2, phi+k2_phi/2)
-        k3_w = delta_t * fw(velocity, p+k2_p/2, v+k2_v/2, q+k2_q/2, u+k2_u/2, tht+k2_tht/2, phi+k2_phi/2)
+        k3_u = delta_t * fu(vel2, q+k2_q/2, w+k2_w/2, r+k2_r/2, v+k2_v/2, tht+k2_tht/2)
+        k3_v = delta_t * fv(vel2, r+k2_r/2, u+k2_u/2, p+k2_p/2, w+k2_w/2, tht+k2_tht/2, phi+k2_phi/2)
+        k3_w = delta_t * fw(vel2, p+k2_p/2, v+k2_v/2, q+k2_q/2, u+k2_u/2, tht+k2_tht/2, phi+k2_phi/2)
 
-        k3_p = delta_t * fp(velocity, p+k2_p/2, q+k2_q/2, r+k2_r/2)
-        k3_q = delta_t * fq(velocity, p+k2_p/2, r+k2_r/2)
-        k3_r = delta_t * fr(velocity, p+k2_p/2, q+k2_q/2, r+k2_r/2)
+        k3_p = delta_t * fp(vel2, p+k2_p/2, q+k2_q/2, r+k2_r/2)
+        k3_q = delta_t * fq(vel2, p+k2_p/2, r+k2_r/2)
+        k3_r = delta_t * fr(vel2, p+k2_p/2, q+k2_q/2, r+k2_r/2)
 
         k3_psi = delta_t * fpsi(q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)
         k3_tht = delta_t * ftht(q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)
         k3_phi = delta_t * fphi(p+k2_p/2, q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)
         !-------------------k4
-        k4_u = delta_t * fu(velocity, q+k3_q, w+k3_w, r+k3_r, v+k3_v, tht+k3_tht)
-        k4_v = delta_t * fv(velocity, r+k3_r, u+k3_u, p+k3_p, w+k3_w, tht+k3_tht, phi+k3_phi)
-        k4_w = delta_t * fw(velocity, p+k3_p, v+k3_v, q+k3_q, u+k3_u, tht+k3_tht, phi+k3_phi)
+        k4_u = delta_t * fu(vel2, q+k3_q, w+k3_w, r+k3_r, v+k3_v, tht+k3_tht)
+        k4_v = delta_t * fv(vel2, r+k3_r, u+k3_u, p+k3_p, w+k3_w, tht+k3_tht, phi+k3_phi)
+        k4_w = delta_t * fw(vel2, p+k3_p, v+k3_v, q+k3_q, u+k3_u, tht+k3_tht, phi+k3_phi)
 
-        k4_p = delta_t * fp(velocity, p+k3_p, q+k3_q, r+k3_r)
-        k4_q = delta_t * fq(velocity, p+k3_p, r+k3_r)
-        k4_r = delta_t * fr(velocity, p+k3_p, q+k3_q, r+k3_r)
+        k4_p = delta_t * fp(vel2, p+k3_p, q+k3_q, r+k3_r)
+        k4_q = delta_t * fq(vel2, p+k3_p, r+k3_r)
+        k4_r = delta_t * fr(vel2, p+k3_p, q+k3_q, r+k3_r)
 
         k4_psi = delta_t * fpsi(q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)
         k4_tht = delta_t * ftht(q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)
@@ -433,6 +433,12 @@ module dof
         phi_start = radians * phi_start
         tht_start = radians * tht_start
         psi_start = radians * psi_start
+        ! ix = ix / radians ** 2
+        ! iy = iy / radians ** 2
+        ! iz = iz / radians ** 2
+        ! ixy = ixy / radians ** 2
+        ! ixz = ixz / radians ** 2
+        ! iyz = iyz / radians ** 2
     end subroutine read_input
 
 
@@ -524,28 +530,30 @@ module dof
             elevator = ac(i)%elevator
             mach_number = ac(i)%mach_number
 
-            cx = estimate(1, angle_of_attack, elevator, mach_number) ! * degrees !?
-            cm = estimate(2, angle_of_attack, elevator, mach_number) ! * degrees !?
-            cz = estimate(3, angle_of_attack, elevator, mach_number) ! * degrees !?
+            angle_of_attack = min(max(angle_of_attack, -5d0), 10d0)
+            elevator = min(max(elevator, -40d0), 40d0)
+            mach_number = min(max(mach_number, 0.1d0), 0.5d0)
+
+            cx = estimate(1, angle_of_attack, elevator, mach_number)
+            cm = estimate(2, angle_of_attack, elevator, mach_number) * 0.01
+            cz = estimate(3, angle_of_attack, elevator, mach_number)
 
             ac(i)%cx = cx
             ac(i)%cm = cm
             ac(i)%cz = cz
 
-            print *, cm
-
             if (i < n_step) then
                 call calc_motion(ac(i), ac(i+1))
-                call ac(i+1)%set_state
+                ! call ac(i+1)%set_state
             end if
 
             ! print *, i, ac(i)%x, ac(i)%z
             output(1, i) = ac(i)%x
             output(2, i) = ac(i)%z
-            output(3, i) = ac(i)%u
-            output(4, i) = ac(i)%mach_number
-            output(5, i) = ac(i)%angle_of_attack
-            output(6, i) = ac(i)%cx
+            output(3, i) = ac(i)%u_earth
+            output(4, i) = ac(i)%w
+            output(5, i) = ac(i)%mach_number
+            output(6, i) = ac(i)%angle_of_attack
         end do
     end subroutine calc
 end module dof

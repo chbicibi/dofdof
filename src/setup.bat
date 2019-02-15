@@ -53,8 +53,8 @@ exit /b
 :main
 call :compile dof_kriging
 call :compile dofdof
-call :mkdll dof.dll dof_kriging.o dofdof.o
+call :mkdll libdof.dll dof_kriging.o dofdof.o
 
 
-del *.o *.mod *.smod >NUL 2>&1
+rem del *.o *.mod *.smod >NUL 2>&1
 exit /b

@@ -82,7 +82,7 @@ def onmousemove(event):
 def get_points(n, x_max=1):
     x = np.linspace(0, x_max, n)
     # y = np.sin(2 * np.pi * x)
-    y = np.zeros_like(x)
+    y = np.zeros_like(x) - 10
     points = list(map(Point2d, x, y))
     points[0].pinned = True
     return points
@@ -218,7 +218,7 @@ class Handler(object):
 def plot_points_main():
 
     # CDLLインスタンス作成
-    libname = 'dof.dll'
+    libname = 'libdof.dll'
     loader_path = '.'
     cdll = np.ctypeslib.load_library(libname, loader_path)
 
@@ -234,15 +234,15 @@ def plot_points_main():
         elv = callback(dt)
         orbit = f_calc(elv, dt)
         times = np.arange(len(elv)) * dt
-        # return orbit[:, 0], orbit[:, 1], times, orbit[:, 5]
-        return times, orbit[:, 4], times, orbit[:, 5]
+        return orbit[:, 0], orbit[:, 1], times, orbit[:, 5]
+        # return times, orbit[:, 4], times, orbit[:, 5] # aoa, cx
 
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 7))
     fig.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=1,
                         wspace=0, hspace=0.25)
 
-    points = get_points(10, x_max=5)
+    points = get_points(10, x_max=20)
     handler = Handler(points, func=func, fig=fig, axes=axes)
 
     # plot_points_with_spline(points, ax)

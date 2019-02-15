@@ -4,6 +4,10 @@
 		"selected_items":
 		[
 			[
+				"che",
+				"check_kriging"
+			],
+			[
 				"ele",
 				"elevator"
 			],
@@ -432,10 +436,6 @@
 				"CHROME_EXE"
 			],
 			[
-				"che",
-				"checkdup"
-			],
-			[
 				"list",
 				"listdir"
 			],
@@ -554,13 +554,26 @@
 			}
 		},
 		{
-			"contents": "0                       !機体諸元・環境設定\n1.190110 9.8            !空気密度,重力加速度\n340                     !代表音速\n70000                   !機体重量\n175                     !代表面積\n9.72 23.6               !機体MAC長、翼スパン\n1194200 2939800 3927300 !主慣性モーメント\n0 119420                !慣性乗積\n0                       !慣性乗積2\n10 0.01                 !計算終了時間（飛行時間）、計算刻み幅\n0 0 10000.0             !初期位置(x, y, z)\n120 0 5                 ! 142.458 0 7.52362 !初期速度（u, v, w)\n0 0 0                   !初期角速度(p, q, r)\n0 -4 0                  !初期角度（ロール,ピッチ,ヨー）\n8.0                     ! θ目標値\nout_l2.csv              ! 出力ファイル名(csv形式)\n-11.0                   !初期舵角(degree)\n",
+			"contents": "0                       !機体諸元・環境設定\n1.190110 9.8            !空気密度,重力加速度\n340                     !代表音速\n70000                   !機体重量\n175                     !代表面積\n9.72 23.6               !機体MAC長、翼スパン\n1194200 2939800 3927300 !主慣性モーメント\n0 1194200               !慣性乗積\n0                       !慣性乗積2\n10 0.01                 !計算終了時間（飛行時間）、計算刻み幅\n0 0 10000.0             !初期位置(x, y, z)\n120 0 0                 ! 142.458 0 7.52362 !初期速度（u, v, w)\n0 0 0                   !初期角速度(p, q, r)\n0 0 0                   !初期角度（ロール,ピッチ,ヨー）\n8.0                     ! θ目標値\nout_l2.csv              ! 出力ファイル名(csv形式)\n-11.0                   !初期舵角(degree)\n",
 			"file": "/C/yam/Studies/Projects/SixDoF/src/initial_cond.inp",
 			"file_size": 744,
-			"file_write_time": 131946115428780939,
+			"file_write_time": 131946341739893718,
 			"settings":
 			{
 				"buffer_size": 627,
+				"encoding": "Western (Windows 1252)",
+				"line_ending": "Unix",
+				"scratch": true
+			}
+		},
+		{
+			"contents": "0 !機体諸元・環境設定===================================================\n9.87 !重力加速度\n288.2 101330 !地上の気温、地上の大気圧\n601183 !機体重量\n278.8272 !代表面積\n10.9344 29.34948 !機体MAC長(機体の長さではない)、翼スパン\n344871 6251581.429 6596452.429   !主慣性モーメント(Ixx, Iyy, Izz) trueixx872752\n0 0 !慣性乗積\n0 !慣性乗積2\n30 0.01 !計算終了時間（飛行時間）、計算刻み幅\n229.9 0 61.6 !初期速度（u, v, w)\n0 0 0 !初期角速度(p, q, r)\n0 -5 0 !初期角度（ロール,ピッチ,ヨー）\n0 0 1234 !初期位置(x, y, z))\n3200.0 0 234 ! x目標値\ngroup_elite.csv ! 出力ファイル名(csv形式)\n0.0 !初期舵角(degree)\n13374000 0 0 !推力　推力レート　エンジン取り付け角\n-2 !使用プログラム",
+			"file": "/C/yam/Temp/from_kasai/GA_flight_phase2_kasai_elv_short/initial_cond.inp",
+			"file_size": 660,
+			"file_write_time": 131889179280000000,
+			"settings":
+			{
+				"buffer_size": 506,
 				"encoding": "Western (Windows 1252)",
 				"line_ending": "Unix",
 				"scratch": true
@@ -584,22 +597,37 @@
 			}
 		},
 		{
-			"contents": "!=======================================================================\n!         6DoF EOM solver\n!=======================================================================\n\nmodule global\n    implicit none\n\n    ! 定数\n    real(8), parameter :: pi = 4 * atan(1d0)\n    real(8), parameter :: radians = pi / 180d0\n    real(8), parameter :: degrees = 180d0 / pi\n\n    integer :: n_step\n    real(8) :: time_end, delta_t\n\n    real(8) :: grav, s_ref, m_body, rho, mac, b_span\n    real(8) :: cx, cy, cz, cl, cm, cn\n    real(8) :: ix, iy, iz, ixy, ixz, iyz\n\n    real(8) :: sonic_speed\n\n    real(8) x_start, y_start, z_start\n    real(8) u_start, v_start, w_start\n    real(8) p_start, q_start, r_start\n    real(8) phi_start, tht_start, psi_start\n    real(8) cx_g, cm_g, cz_g\n    real(8) x_thrust\n\n    real(8) ei\n    real(8) cx_pred, cy_pred, cz_pred\n    real(8) cl_pred, cm_pred, cn_pred\nend module global\n\n\nmodule equation\n    use global\n    implicit none\n\n    contains\n\n    !=======================================================================\n    !     function of EOM ( 6 degrees of freedom )\n    !=======================================================================\n\n    !-------translational motion\n    real(8) function fu(velocity, q, w, r, v, tht)\n        real(8), intent(in) :: velocity, q, w, r, v, tht\n\n        fu = -q * w + r * v - grav * sin(tht) &\n           + rho * velocity ** 2 * s_ref * cx / (2 * m_body)\n    end function fu\n\n\n    real(8) function fv(velocity, r, u, p, w, tht, phi)\n        real(8), intent(in) :: velocity, r, u, p, w, tht, phi\n\n        fv = -r * u + p * w + grav * cos(tht) * sin(phi) &\n           + rho * velocity ** 2 * s_ref * cy / (2 * m_body)\n    end function fv\n\n\n    real(8) function fw(velocity, p, v, q, u, tht, phi)\n        real(8), intent(in) :: velocity, p, v, q, u, tht, phi\n\n        fw = -p * v + q * u + grav * cos(tht) * cos(phi) &\n           + rho * velocity ** 2 * s_ref * cz / (2 * m_body)\n    end function fw\n\n\n    !-------angular acceleration\n    real(8) function fp(velocity, p, q, r)\n        real(8), intent(in) :: velocity, p, q, r\n        real(8) :: roll, yaw\n\n        roll = ((iy - iz) * q * r + ixz * p * q) &\n             + rho * velocity ** 2 * s_ref * b_span * cl / 2\n        yaw = ((ix - iy) * p * q - ixz * q * r) &\n            + rho * velocity ** 2 * s_ref * b_span * cn / 2\n        fp = (roll / ix + ixz / ix * yaw / iz) / (1 - ixz ** 2 / (ix * iz))\n    end function fp\n\n\n    real(8) function fq(velocity, p, r)\n        real(8), intent(in) :: velocity, p, r\n        real(8) :: pitch\n\n        pitch = (((iz - ix) * r * p) + ((ixz * (r ** 2 - p ** 2)))) &\n              + ((rho * (velocity ** 2) * s_ref * mac * cm) / 2)\n        fq = (pitch / iy)\n    end function fq\n\n\n    real(8) function fr(velocity, p, q, r)\n        real(8), intent(in) :: velocity, p, q, r\n        real(8) :: roll, yaw\n\n        roll = ((iy-iz) * q*r)+(ixz*p*q) &\n             + ((rho*(velocity**2) * s_ref*b_span*cl)/2)\n        yaw = ((ix-iy) * p*q)-(ixz*q*r) &\n            + ((rho*(velocity**2) * s_ref*b_span*cn)/2)\n        fr = (((yaw/iz)+(ixz/iz) * (roll/ix))/(1.d0-((ixz**2)/(ix*iz))))\n    end function fr\n\n\n    !-------attitude angle\n    real(8) function fpsi(q, r, phi, tht)\n        real(8), intent(in) :: q, r, phi, tht\n\n        fpsi = ((r*cos(phi)+q*sin(phi))/(cos(tht)))\n    end function fpsi\n\n\n    real(8) function ftht(q, r, phi, tht)\n        real(8), intent(in) :: q, r, phi, tht\n\n        ftht = (q*cos(phi)-r*sin(phi))\n    end function ftht\n\n\n    real(8) function fphi(p, q, r, phi, tht)\n        real(8), intent(in) :: p, q, r, phi, tht\n\n        fphi =(p+(r*cos(phi)+q*sin(phi)) * tan(tht))\n    end function fphi\n\n\n    subroutine rk4(u, v, w, p, q, r, phi, tht, psi,     &\n        u_next, v_next, w_next, p_next, q_next, r_next, &\n        phi_next, tht_next, psi_next)\n\n        real(8), intent(in) :: u, v, w, p, q, r, phi, tht, psi\n        real(8), intent(out) :: u_next, v_next, w_next\n        real(8), intent(out) :: p_next, q_next, r_next\n        real(8), intent(out) :: phi_next, tht_next, psi_next\n\n        real(8) :: k1_u, k1_v, k1_w\n        real(8) :: k2_u, k2_v, k2_w\n        real(8) :: k3_u, k3_v, k3_w\n        real(8) :: k4_u, k4_v, k4_w\n\n        real(8) :: k1_p, k1_q, k1_r\n        real(8) :: k2_p, k2_q, k2_r\n        real(8) :: k3_p, k3_q, k3_r\n        real(8) :: k4_p, k4_q, k4_r\n\n        real(8) :: k1_phi, k1_tht, k1_psi\n        real(8) :: k2_phi, k2_tht, k2_psi\n        real(8) :: k3_phi, k3_tht, k3_psi\n        real(8) :: k4_phi, k4_tht, k4_psi\n\n        real(8) :: velocity\n\n        velocity = sqrt(u ** 2 + v ** 2 + w ** 2)\n\n        !-------------------k1\n        k1_u = delta_t * fu(velocity, q, w, r, v, tht)\n        k1_v = delta_t * fv(velocity, r, u, p, w, tht, phi)\n        k1_w = delta_t * fw(velocity, p, v, q, u, tht, phi)\n\n        k1_p = delta_t * fp(velocity, p, q, r)\n        k1_q = delta_t * fq(velocity, p, r)\n        k1_r = delta_t * fr(velocity, p, q, r)\n\n        k1_psi = delta_t * fpsi(q, r, phi, tht)\n        k1_tht = delta_t * ftht(q, r, phi, tht)\n        k1_phi = delta_t * fphi(p, q, r, phi, tht)\n        !-------------------k2\n        k2_u = delta_t * fu(velocity, q+k1_q/2, w+k1_w/2, r+k1_r/2, v+k1_v/2, tht+k1_tht/2)\n        k2_v = delta_t * fv(velocity, r+k1_r/2, u+k1_u/2, p+k1_p/2, w+k1_w/2, tht+k1_tht/2, phi+k1_phi/2)\n        k2_w = delta_t * fw(velocity, p+k1_p/2, v+k1_v/2, q+k1_q/2, u+k1_u/2, tht+k1_tht/2, phi+k1_phi/2)\n\n        k2_p = delta_t * fp(velocity, p+k1_p/2, q+k1_q/2, r+k1_r/2)\n        k2_q = delta_t * fq(velocity, p+k1_p/2, r+k1_r/2)\n        k2_r = delta_t * fr(velocity, p+k1_p/2, q+k1_q/2, r+k1_r/2)\n\n        k2_psi = delta_t * fpsi(q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)\n        k2_tht = delta_t * ftht(q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)\n        k2_phi = delta_t * fphi(p+k1_p/2, q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)\n        !-------------------k3\n        k3_u = delta_t * fu(velocity, q+k2_q/2, w+k2_w/2, r+k2_r/2, v+k2_v/2, tht+k2_tht/2)\n        k3_v = delta_t * fv(velocity, r+k2_r/2, u+k2_u/2, p+k2_p/2, w+k2_w/2, tht+k2_tht/2, phi+k2_phi/2)\n        k3_w = delta_t * fw(velocity, p+k2_p/2, v+k2_v/2, q+k2_q/2, u+k2_u/2, tht+k2_tht/2, phi+k2_phi/2)\n\n        k3_p = delta_t * fp(velocity, p+k2_p/2, q+k2_q/2, r+k2_r/2)\n        k3_q = delta_t * fq(velocity, p+k2_p/2, r+k2_r/2)\n        k3_r = delta_t * fr(velocity, p+k2_p/2, q+k2_q/2, r+k2_r/2)\n\n        k3_psi = delta_t * fpsi(q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)\n        k3_tht = delta_t * ftht(q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)\n        k3_phi = delta_t * fphi(p+k2_p/2, q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)\n        !-------------------k4\n        k4_u = delta_t * fu(velocity, q+k3_q, w+k3_w, r+k3_r, v+k3_v, tht+k3_tht)\n        k4_v = delta_t * fv(velocity, r+k3_r, u+k3_u, p+k3_p, w+k3_w, tht+k3_tht, phi+k3_phi)\n        k4_w = delta_t * fw(velocity, p+k3_p, v+k3_v, q+k3_q, u+k3_u, tht+k3_tht, phi+k3_phi)\n\n        k4_p = delta_t * fp(velocity, p+k3_p, q+k3_q, r+k3_r)\n        k4_q = delta_t * fq(velocity, p+k3_p, r+k3_r)\n        k4_r = delta_t * fr(velocity, p+k3_p, q+k3_q, r+k3_r)\n\n        k4_psi = delta_t * fpsi(q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)\n        k4_tht = delta_t * ftht(q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)\n        k4_phi = delta_t * fphi(p+k3_p, q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)\n        !-------------------output for eis-------------------------------------\n\n        u_next = u + (k1_u+(2*k2_u)+(2*k3_u)+k4_u)/6d0\n        v_next = v + (k1_v+(2*k2_v)+(2*k3_v)+k4_v)/6d0\n        w_next = w + (k1_w+(2*k2_w)+(2*k3_w)+k4_w)/6d0\n\n        p_next = p + (k1_p+(2*k2_p)+(2*k3_p)+k4_p)/6d0\n        q_next = q + (k1_q+(2*k2_q)+(2*k3_q)+k4_q)/6d0\n        r_next = r + (k1_r+(2*k2_r)+(2*k3_r)+k4_r)/6d0\n\n        phi_next = phi + (k1_phi+(2*k2_phi)+(2*k3_phi)+k4_phi)/6d0\n        tht_next = tht + (k1_tht+(2*k2_tht)+(2*k3_tht)+k4_tht)/6d0\n        psi_next = psi + (k1_psi+(2*k2_psi)+(2*k3_psi)+k4_psi)/6d0\n    end subroutine rk4\n\nend module equation\n\n\nmodule flight\n    use global\n    implicit none\n\n    type :: aircraft\n        real(8) :: x, y, z ! 位置\n        real(8) :: u, v, w ! 速度\n        real(8) :: p, q, r ! 角速度\n        real(8) :: phi, theta, psi ! 角度\n\n        real(8) :: u_earth, v_earth, w_earth\n        real(8) :: velocity\n        real(8) :: mach_number\n        real(8) :: angle_of_attack\n\n        real(8) :: elevator\n\n        contains\n\n        procedure :: set_state\n    end type aircraft\n\n    contains\n\n    subroutine set_state(self)\n        class(aircraft), intent(inout) :: self\n        real(8) :: velocity, angle_of_attack, mach_number\n        real(8) :: u_earth, v_earth, w_earth\n        real(8) :: tht, phi, psi\n\n        phi = self%phi\n        tht = self%theta\n        psi = self%psi\n\n        velocity        = sqrt(self%u ** 2 + self%v ** 2 + self%w ** 2)\n        angle_of_attack = atan(self%w / self%u)\n        mach_number     = velocity / sonic_speed\n\n        u_earth = cos(tht) * cos(psi) * self%u   &\n                + (sin(phi) * sin(tht) * cos(psi)  &\n                   - cos(phi) * sin(psi)) * self%v &\n                + (cos(phi) * sin(tht) * cos(psi)  &\n                   + sin(phi) * sin(psi)) * self%w\n\n        v_earth = cos(tht) * sin(psi) * self%u   &\n                + (sin(phi) * sin(tht) * sin(psi)  &\n                   + cos(phi) * cos(psi)) * self%v &\n                + (cos(phi) * sin(tht) * sin(psi)  &\n                   - sin(phi) * cos(psi)) * self%w\n\n        w_earth = sin(tht) * self%u              &\n                - sin(phi) * cos(tht) * self%v  &\n                - cos(phi) * cos(tht) * self%w\n\n        self%u_earth = u_earth\n        self%v_earth = v_earth\n        self%w_earth = w_earth\n        self%velocity = velocity\n        self%mach_number = mach_number\n        self%angle_of_attack = angle_of_attack\n    end subroutine set_state\n\nend module flight\n\n\nprogram test\n    use global\n    use flight\n    use equation\n    use dof_kriging\n    implicit none\n\n    type(aircraft), allocatable :: ac(:)\n    integer :: i\n\n    call init\n\n    print *, 1, ac(1)%x, ac(1)%z\n    do i = 2, n_step\n\n        cx = estimate(1, ac(i)%angle_of_attack, ac(i)%elevator, ac(i)%mach_number)\n        cm = estimate(2, ac(i)%angle_of_attack, ac(i)%elevator, ac(i)%mach_number)\n        cz = estimate(3, ac(i)%angle_of_attack, ac(i)%elevator, ac(i)%mach_number)\n\n        call calc_motion(ac(i-1), ac(i))\n        call ac(i)%set_state\n        print *, i, ac(i)%x, ac(i)%z\n    end do\n\n    contains\n\n    ! ======================================================\n    ! 初期化\n    ! ======================================================\n\n    subroutine init\n        call read_input\n        n_step = time_end / delta_t\n        allocate(ac(n_step))\n\n        call load_krig(num_var=3)\n\n        call init_aircraft(ac(1))\n        call ac(1)%set_state\n    end subroutine init\n\n\n    subroutine read_input\n        integer :: unit\n\n        open(newunit=unit, file='initial_cond.inp', status=\"old\")\n        read(unit, *)\n        read(unit, *) rho, grav\n        read(unit, *) sonic_speed\n        read(unit, *) m_body\n        read(unit, *) s_ref\n        read(unit, *) mac, b_span\n        read(unit, *) ix, iy, iz\n        read(unit, *) ixy, ixz\n        read(unit, *) iyz\n        read(unit, *) time_end, delta_t\n        read(unit, *) x_start, y_start, z_start\n        read(unit, *) u_start, v_start, w_start\n        read(unit, *) p_start, q_start, r_start\n        read(unit, *) phi_start, tht_start, psi_start\n        close(unit)\n\n        u_start = radians * u_start\n        v_start = radians * v_start\n        w_start = radians * w_start\n        phi_start = radians * phi_start\n        tht_start = radians * tht_start\n        psi_start = radians * psi_start\n    end subroutine read_input\n\n\n    subroutine init_aircraft(ac)\n        type(aircraft), intent(inout) :: ac\n        ac%x = x_start\n        ac%y = y_start\n        ac%z = z_start\n        ac%u = u_start\n        ac%v = v_start\n        ac%w = w_start\n        ac%p = p_start\n        ac%q = q_start\n        ac%r = r_start\n        ac%phi = phi_start\n        ac%theta = tht_start\n        ac%psi = psi_start\n        ac%elevator = 0\n    end subroutine init_aircraft\n\n\n    subroutine calc_motion(ac_in, ac_out)\n        type(aircraft), intent(in) :: ac_in\n        type(aircraft), intent(out) :: ac_out\n\n        call rk4(ac_in%u, ac_in%v, ac_in%w, ac_in%p, ac_in%q, ac_in%r, &\n                 ac_in%phi, ac_in%theta, ac_in%psi, &\n                 ac_out%u, ac_out%v, ac_out%w, ac_out%p, ac_out%q, ac_out%r, &\n                 ac_out%phi, ac_out%theta, ac_out%psi)\n\n        call ac_out%set_state\n\n        ac_out%x = ac_in%x + ac_out%u_earth * delta_t\n        ac_out%y = ac_in%y + ac_out%v_earth * delta_t\n        ac_out%z = ac_in%z + ac_out%w_earth * delta_t\n    end subroutine calc_motion\n\nend program test\n\nmodule dll\n    use global\n    use flight\n    use equation\n    use dof_kriging\n    implicit none\n\n    type(aircraft), allocatable :: ac(:)\n    integer :: i\n\n    call init\n\n    print *, 1, ac(1)%x, ac(1)%z\n    do i = 2, n_step\n\n        cx = estimate(1, ac(i)%angle_of_attack, ac(i)%elevator, ac(i)%mach_number)\n        cm = estimate(2, ac(i)%angle_of_attack, ac(i)%elevator, ac(i)%mach_number)\n        cz = estimate(3, ac(i)%angle_of_attack, ac(i)%elevator, ac(i)%mach_number)\n\n        call calc_motion(ac(i-1), ac(i))\n        call ac(i)%set_state\n        print *, i, ac(i)%x, ac(i)%z\n    end do\n\n    contains\n\n    ! ======================================================\n    ! 初期化\n    ! ======================================================\n\n    subroutine init\n        call read_input\n        n_step = time_end / delta_t\n        allocate(ac(n_step))\n\n        call load_krig(num_var=3)\n\n        call init_aircraft(ac(1))\n        call ac(1)%set_state\n    end subroutine init\n\n\n    subroutine read_input\n        integer :: unit\n\n        open(newunit=unit, file='initial_cond.inp', status=\"old\")\n        read(unit, *)\n        read(unit, *) rho, grav\n        read(unit, *) sonic_speed\n        read(unit, *) m_body\n        read(unit, *) s_ref\n        read(unit, *) mac, b_span\n        read(unit, *) ix, iy, iz\n        read(unit, *) ixy, ixz\n        read(unit, *) iyz\n        read(unit, *) time_end, delta_t\n        read(unit, *) x_start, y_start, z_start\n        read(unit, *) u_start, v_start, w_start\n        read(unit, *) p_start, q_start, r_start\n        read(unit, *) phi_start, tht_start, psi_start\n        close(unit)\n\n        u_start = radians * u_start\n        v_start = radians * v_start\n        w_start = radians * w_start\n        phi_start = radians * phi_start\n        tht_start = radians * tht_start\n        psi_start = radians * psi_start\n    end subroutine read_input\n\n\n    subroutine init_aircraft(ac)\n        type(aircraft), intent(inout) :: ac\n        ac%x = x_start\n        ac%y = y_start\n        ac%z = z_start\n        ac%u = u_start\n        ac%v = v_start\n        ac%w = w_start\n        ac%p = p_start\n        ac%q = q_start\n        ac%r = r_start\n        ac%phi = phi_start\n        ac%theta = tht_start\n        ac%psi = psi_start\n        ac%elevator = 0\n    end subroutine init_aircraft\n\n\n    subroutine calc_motion(ac_in, ac_out)\n        type(aircraft), intent(in) :: ac_in\n        type(aircraft), intent(out) :: ac_out\n\n        call rk4(ac_in%u, ac_in%v, ac_in%w, ac_in%p, ac_in%q, ac_in%r, &\n                 ac_in%phi, ac_in%theta, ac_in%psi, &\n                 ac_out%u, ac_out%v, ac_out%w, ac_out%p, ac_out%q, ac_out%r, &\n                 ac_out%phi, ac_out%theta, ac_out%psi)\n\n        call ac_out%set_state\n\n        ac_out%x = ac_in%x + ac_out%u_earth * delta_t\n        ac_out%y = ac_in%y + ac_out%v_earth * delta_t\n        ac_out%z = ac_in%z + ac_out%w_earth * delta_t\n    end subroutine calc_motion\nend module dll",
-			"file": "/C/yam/Studies/Projects/SixDoF/src/dofdof.f08",
-			"file_size": 13226,
-			"file_write_time": 131946134055795839,
+			"file": "/C/yam/Studies/Projects/SixDoF/src/setup.bat",
 			"settings":
 			{
-				"buffer_size": 15748,
+				"buffer_size": 914,
 				"encoding": "UTF-8",
 				"line_ending": "Windows"
 			}
 		},
 		{
-			"file": "/C/yam/Studies/Projects/SixDoF/src/setup.bat",
+			"file": "/C/yam/Studies/Projects/SixDoF/src/dofdof.f08",
 			"settings":
 			{
-				"buffer_size": 781,
+				"buffer_size": 17812,
+				"encoding": "UTF-8",
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "/C/yam/Studies/Projects/SixDoF/src/mpl_test.py",
+			"settings":
+			{
+				"buffer_size": 8267,
+				"encoding": "UTF-8",
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "/C/yam/Studies/Projects/SixDoF/src/check_kriging.f08",
+			"settings":
+			{
+				"buffer_size": 1247,
 				"encoding": "UTF-8",
 				"line_ending": "Windows"
 			}
@@ -654,6 +682,9 @@
 	],
 	"file_history":
 	[
+		"/C/yam/Temp/from_kasai/GA_flight_phase2_kasai_elv_short/dofdof.f95",
+		"/C/yam/Studies/Projects/SixDoF/src/btheta_cm",
+		"/C/yam/Studies/Projects/mpl_test/mpl_test.py",
 		"/C/yam/Studies/Projects/SixDoF/kriging.inp",
 		"/C/yam/Studies/Projects/SixDoF/src/Makefile",
 		"/C/yam/Studies/Projects/SixDoF/src/dof_kriging.f95",
@@ -778,10 +809,7 @@
 		"/F/Playlist/1901_私に天使が舞い降りた！/player.avs",
 		"/C/Users/YuniboA/Desktop/L-SMASH_Works_r935-2_plugins/Readme.txt",
 		"/D/Temp/Movie/0000_新世紀ヱヴァンゲリヲン/新世紀エヴァンゲリオン 第壱話「使徒、襲来」 [WOWOWプライム] 2018年10月04日(木)25時00分.avs",
-		"/D/Temp/Movie/0000_新世紀ヱヴァンゲリヲン/test.avs",
-		"/D/Temp/Movie/0000_新世紀ヱヴァンゲリヲン/test.d2v",
-		"/D/Temp/Movie/名探偵コナン/enc_20190116_134949_9496_src.d2v",
-		"/F/Playlist/1901_私に天使が舞い降りた！/私に天使が舞い降りた！ 第1話「もにょっとした気持ち」 [BS11] 2019年01月09日(水)24時00分.csv"
+		"/D/Temp/Movie/0000_新世紀ヱヴァンゲリヲン/test.avs"
 	],
 	"find":
 	{
@@ -799,6 +827,46 @@
 		"case_sensitive": true,
 		"find_history":
 		[
+			" ! * degrees !?",
+			"cz",
+			"ixz",
+			"vel2 ** 2",
+			"velocity",
+			"radians",
+			"psi_start",
+			"tht_start",
+			"phi_start",
+			"psi_start",
+			"tht_start",
+			"phi_start",
+			"iy",
+			"fq",
+			"cm",
+			"!",
+			"2",
+			"axes[1]",
+			"1",
+			" * degrees !?",
+			"u_earth",
+			"u_",
+			"radians",
+			"deg",
+			"atan",
+			"1",
+			"radians",
+			"degrees",
+			"angle_of_attack",
+			"1",
+			"[0]",
+			"0",
+			"1",
+			"data",
+			"f_call_problem",
+			"f_initialize",
+			"aregs",
+			"iargs",
+			"ac(i)%",
+			", ",
 			"_2",
 			"real",
 			"estimate",
@@ -875,7 +943,7 @@
 	"groups":
 	[
 		{
-			"selected": 7,
+			"selected": 10,
 			"sheets":
 			[
 				{
@@ -1084,7 +1152,7 @@
 						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 7,
+					"stack_index": 11,
 					"type": "text"
 				},
 				{
@@ -1100,8 +1168,8 @@
 						"selection":
 						[
 							[
-								1137,
-								1103
+								1079,
+								991
 							]
 						],
 						"settings":
@@ -1262,7 +1330,7 @@
 						"translation.y": 355.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 5,
+					"stack_index": 9,
 					"type": "text"
 				},
 				{
@@ -1285,7 +1353,7 @@
 						"settings":
 						{
 							"bracket_highlighter.busy": false,
-							"bracket_highlighter.clone": 150,
+							"bracket_highlighter.clone": -1,
 							"bracket_highlighter.clone_locations":
 							{
 								"close":
@@ -1439,7 +1507,7 @@
 						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 8,
+					"stack_index": 10,
 					"type": "text"
 				},
 				{
@@ -1618,7 +1686,7 @@
 						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 4,
+					"stack_index": 8,
 					"type": "text"
 				},
 				{
@@ -1634,8 +1702,8 @@
 						"selection":
 						[
 							[
-								0,
-								0
+								383,
+								383
 							]
 						],
 						"settings":
@@ -1790,6 +1858,7 @@
 							],
 							"in_converting": true,
 							"origin_encoding": "SHIFT_JIS",
+							"revert_to_scratch": true,
 							"syntax": "Packages/Text/Plain text.tmLanguage",
 							"translate_tabs_to_spaces": true
 						},
@@ -1797,395 +1866,16 @@
 						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 3,
+					"stack_index": 6,
 					"type": "text"
 				},
 				{
 					"buffer": 5,
-					"file": "/C/yam/Studies/Projects/SixDoF/src/dof_kriging.f08",
+					"file": "/C/yam/Temp/from_kasai/GA_flight_phase2_kasai_elv_short/initial_cond.inp",
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 4695,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								682,
-								682
-							],
-							[
-								695,
-								695
-							],
-							[
-								708,
-								708
-							],
-							[
-								2501,
-								2501
-							],
-							[
-								2514,
-								2514
-							],
-							[
-								2527,
-								2527
-							]
-						],
-						"settings":
-						{
-							"bracket_highlighter.busy": false,
-							"bracket_highlighter.clone": -1,
-							"bracket_highlighter.clone_locations":
-							{
-								"close":
-								{
-									"1":
-									[
-										684,
-										685
-									],
-									"2":
-									[
-										699,
-										700
-									],
-									"3":
-									[
-										714,
-										715
-									],
-									"4":
-									[
-										2509,
-										2510
-									],
-									"5":
-									[
-										2524,
-										2525
-									],
-									"6":
-									[
-										2539,
-										2540
-									]
-								},
-								"icon":
-								{
-									"1":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"2":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"3":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"4":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"5":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"6":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									]
-								},
-								"open":
-								{
-									"1":
-									[
-										672,
-										673
-									],
-									"2":
-									[
-										687,
-										688
-									],
-									"3":
-									[
-										702,
-										703
-									],
-									"4":
-									[
-										2497,
-										2498
-									],
-									"5":
-									[
-										2512,
-										2513
-									],
-									"6":
-									[
-										2527,
-										2528
-									]
-								},
-								"unmatched":
-								{
-								}
-							},
-							"bracket_highlighter.clone_regions":
-							[
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content"
-							],
-							"bracket_highlighter.locations":
-							{
-								"close":
-								{
-									"1":
-									[
-										682,
-										683
-									],
-									"2":
-									[
-										695,
-										696
-									],
-									"3":
-									[
-										708,
-										709
-									],
-									"4":
-									[
-										2501,
-										2502
-									],
-									"5":
-									[
-										2514,
-										2515
-									],
-									"6":
-									[
-										2527,
-										2528
-									]
-								},
-								"icon":
-								{
-									"1":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"2":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"3":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"4":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"5":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									],
-									"6":
-									[
-										"Packages/BracketHighlighter/icons/double_quote.png",
-										"brackethighlighter.quote"
-									]
-								},
-								"open":
-								{
-									"1":
-									[
-										672,
-										673
-									],
-									"2":
-									[
-										685,
-										686
-									],
-									"3":
-									[
-										698,
-										699
-									],
-									"4":
-									[
-										2491,
-										2492
-									],
-									"5":
-									[
-										2504,
-										2505
-									],
-									"6":
-									[
-										2517,
-										2518
-									]
-								},
-								"unmatched":
-								{
-								}
-							},
-							"bracket_highlighter.regions":
-							[
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content"
-							],
-							"origin_encoding": "ASCII",
-							"syntax": "Packages/Fortran/SublimeFortran/grammars/FortranModern.sublime-syntax",
-							"tab_size": 2,
-							"translate_tabs_to_spaces": true
-						},
-						"translation.x": 0.0,
-						"translation.y": 1939.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 2,
-					"type": "text"
-				},
-				{
-					"buffer": 6,
-					"file": "/C/yam/Studies/Projects/SixDoF/src/dof_rk4.f95",
-					"semi_transient": true,
-					"settings":
-					{
-						"buffer_size": 8437,
+						"buffer_size": 506,
 						"regions":
 						{
 						},
@@ -2199,7 +1889,7 @@
 						"settings":
 						{
 							"bracket_highlighter.busy": false,
-							"bracket_highlighter.clone": 166,
+							"bracket_highlighter.clone": 313,
 							"bracket_highlighter.clone_locations":
 							{
 								"close":
@@ -2288,6 +1978,157 @@
 								{
 								}
 							},
+							"in_converting": true,
+							"origin_encoding": "SHIFT_JIS",
+							"syntax": "Packages/Text/Plain text.tmLanguage",
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 5,
+					"type": "text"
+				},
+				{
+					"buffer": 6,
+					"file": "/C/yam/Studies/Projects/SixDoF/src/dof_kriging.f08",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 4695,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								1044,
+								1044
+							]
+						],
+						"settings":
+						{
+							"bracket_highlighter.busy": false,
+							"bracket_highlighter.clone": -1,
+							"bracket_highlighter.clone_locations":
+							{
+								"close":
+								{
+									"1":
+									[
+										1043,
+										1044
+									]
+								},
+								"icon":
+								{
+									"1":
+									[
+										"Packages/BracketHighlighter/icons/round_bracket.png",
+										"brackethighlighter.round"
+									]
+								},
+								"open":
+								{
+									"1":
+									[
+										1012,
+										1013
+									]
+								},
+								"unmatched":
+								{
+								}
+							},
+							"bracket_highlighter.clone_regions":
+							[
+								"bh_curly",
+								"bh_curly_center",
+								"bh_curly_open",
+								"bh_curly_close",
+								"bh_curly_content",
+								"bh_single_quote",
+								"bh_single_quote_center",
+								"bh_single_quote_open",
+								"bh_single_quote_close",
+								"bh_single_quote_content",
+								"bh_regex",
+								"bh_regex_center",
+								"bh_regex_open",
+								"bh_regex_close",
+								"bh_regex_content",
+								"bh_c_define",
+								"bh_c_define_center",
+								"bh_c_define_open",
+								"bh_c_define_close",
+								"bh_c_define_content",
+								"bh_tag",
+								"bh_tag_center",
+								"bh_tag_open",
+								"bh_tag_close",
+								"bh_tag_content",
+								"bh_double_quote",
+								"bh_double_quote_center",
+								"bh_double_quote_open",
+								"bh_double_quote_close",
+								"bh_double_quote_content",
+								"bh_round",
+								"bh_round_center",
+								"bh_round_open",
+								"bh_round_close",
+								"bh_round_content",
+								"bh_unmatched",
+								"bh_unmatched_center",
+								"bh_unmatched_open",
+								"bh_unmatched_close",
+								"bh_unmatched_content",
+								"bh_angle",
+								"bh_angle_center",
+								"bh_angle_open",
+								"bh_angle_close",
+								"bh_angle_content",
+								"bh_square",
+								"bh_square_center",
+								"bh_square_open",
+								"bh_square_close",
+								"bh_square_content",
+								"bh_default",
+								"bh_default_center",
+								"bh_default_open",
+								"bh_default_close",
+								"bh_default_content"
+							],
+							"bracket_highlighter.locations":
+							{
+								"close":
+								{
+									"1":
+									[
+										1043,
+										1044
+									]
+								},
+								"icon":
+								{
+									"1":
+									[
+										"Packages/BracketHighlighter/icons/round_bracket.png",
+										"brackethighlighter.round"
+									]
+								},
+								"open":
+								{
+									"1":
+									[
+										1012,
+										1013
+									]
+								},
+								"unmatched":
+								{
+								}
+							},
 							"bracket_highlighter.regions":
 							[
 								"bh_curly",
@@ -2352,27 +2193,27 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 0.0,
+						"translation.y": 1141.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 6,
+					"stack_index": 4,
 					"type": "text"
 				},
 				{
 					"buffer": 7,
-					"file": "/C/yam/Studies/Projects/SixDoF/src/dofdof.f08",
-					"semi_transient": false,
+					"file": "/C/yam/Studies/Projects/SixDoF/src/dof_rk4.f95",
+					"semi_transient": true,
 					"settings":
 					{
-						"buffer_size": 15748,
+						"buffer_size": 8437,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								13569,
-								13569
+								2235,
+								2240
 							]
 						],
 						"settings":
@@ -2525,15 +2366,16 @@
 								"bh_default_close",
 								"bh_default_content"
 							],
+							"origin_encoding": "ASCII",
 							"syntax": "Packages/Fortran/SublimeFortran/grammars/FortranModern.sublime-syntax",
-							"tab_size": 4,
+							"tab_size": 2,
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 7531.0,
+						"translation.y": 1083.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 0,
+					"stack_index": 7,
 					"type": "text"
 				},
 				{
@@ -2542,15 +2384,15 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 781,
+						"buffer_size": 914,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								380,
-								380
+								838,
+								838
 							]
 						],
 						"settings":
@@ -2706,10 +2548,590 @@
 							"syntax": "Packages/Batch File/Batch File.sublime-syntax"
 						},
 						"translation.x": 0.0,
-						"translation.y": 0.0,
+						"translation.y": 571.0,
 						"zoom_level": 1.0
 					},
 					"stack_index": 1,
+					"type": "text"
+				},
+				{
+					"buffer": 9,
+					"file": "/C/yam/Studies/Projects/SixDoF/src/dofdof.f08",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 17812,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								17628,
+								17628
+							]
+						],
+						"settings":
+						{
+							"bracket_highlighter.busy": false,
+							"bracket_highlighter.clone": -1,
+							"bracket_highlighter.clone_locations":
+							{
+								"close":
+								{
+								},
+								"icon":
+								{
+								},
+								"open":
+								{
+								},
+								"unmatched":
+								{
+								}
+							},
+							"bracket_highlighter.clone_regions":
+							[
+								"bh_curly",
+								"bh_curly_center",
+								"bh_curly_open",
+								"bh_curly_close",
+								"bh_curly_content",
+								"bh_single_quote",
+								"bh_single_quote_center",
+								"bh_single_quote_open",
+								"bh_single_quote_close",
+								"bh_single_quote_content",
+								"bh_regex",
+								"bh_regex_center",
+								"bh_regex_open",
+								"bh_regex_close",
+								"bh_regex_content",
+								"bh_c_define",
+								"bh_c_define_center",
+								"bh_c_define_open",
+								"bh_c_define_close",
+								"bh_c_define_content",
+								"bh_tag",
+								"bh_tag_center",
+								"bh_tag_open",
+								"bh_tag_close",
+								"bh_tag_content",
+								"bh_double_quote",
+								"bh_double_quote_center",
+								"bh_double_quote_open",
+								"bh_double_quote_close",
+								"bh_double_quote_content",
+								"bh_round",
+								"bh_round_center",
+								"bh_round_open",
+								"bh_round_close",
+								"bh_round_content",
+								"bh_unmatched",
+								"bh_unmatched_center",
+								"bh_unmatched_open",
+								"bh_unmatched_close",
+								"bh_unmatched_content",
+								"bh_angle",
+								"bh_angle_center",
+								"bh_angle_open",
+								"bh_angle_close",
+								"bh_angle_content",
+								"bh_square",
+								"bh_square_center",
+								"bh_square_open",
+								"bh_square_close",
+								"bh_square_content",
+								"bh_default",
+								"bh_default_center",
+								"bh_default_open",
+								"bh_default_close",
+								"bh_default_content"
+							],
+							"bracket_highlighter.locations":
+							{
+								"close":
+								{
+								},
+								"icon":
+								{
+								},
+								"open":
+								{
+								},
+								"unmatched":
+								{
+								}
+							},
+							"bracket_highlighter.regions":
+							[
+								"bh_curly",
+								"bh_curly_center",
+								"bh_curly_open",
+								"bh_curly_close",
+								"bh_curly_content",
+								"bh_single_quote",
+								"bh_single_quote_center",
+								"bh_single_quote_open",
+								"bh_single_quote_close",
+								"bh_single_quote_content",
+								"bh_regex",
+								"bh_regex_center",
+								"bh_regex_open",
+								"bh_regex_close",
+								"bh_regex_content",
+								"bh_c_define",
+								"bh_c_define_center",
+								"bh_c_define_open",
+								"bh_c_define_close",
+								"bh_c_define_content",
+								"bh_tag",
+								"bh_tag_center",
+								"bh_tag_open",
+								"bh_tag_close",
+								"bh_tag_content",
+								"bh_double_quote",
+								"bh_double_quote_center",
+								"bh_double_quote_open",
+								"bh_double_quote_close",
+								"bh_double_quote_content",
+								"bh_round",
+								"bh_round_center",
+								"bh_round_open",
+								"bh_round_close",
+								"bh_round_content",
+								"bh_unmatched",
+								"bh_unmatched_center",
+								"bh_unmatched_open",
+								"bh_unmatched_close",
+								"bh_unmatched_content",
+								"bh_angle",
+								"bh_angle_center",
+								"bh_angle_open",
+								"bh_angle_close",
+								"bh_angle_content",
+								"bh_square",
+								"bh_square_center",
+								"bh_square_open",
+								"bh_square_close",
+								"bh_square_content",
+								"bh_default",
+								"bh_default_center",
+								"bh_default_open",
+								"bh_default_close",
+								"bh_default_content"
+							],
+							"origin_encoding": "UTF-8",
+							"syntax": "Packages/Fortran/SublimeFortran/grammars/FortranModern.sublime-syntax",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 10109.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 2,
+					"type": "text"
+				},
+				{
+					"buffer": 10,
+					"file": "/C/yam/Studies/Projects/SixDoF/src/mpl_test.py",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 8267,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								1999,
+								1999
+							]
+						],
+						"settings":
+						{
+							"bracket_highlighter.busy": false,
+							"bracket_highlighter.clone": -1,
+							"bracket_highlighter.clone_locations":
+							{
+								"close":
+								{
+									"1":
+									[
+										6181,
+										6182
+									]
+								},
+								"icon":
+								{
+									"1":
+									[
+										"Packages/BracketHighlighter/icons/square_bracket.png",
+										"brackethighlighter.square"
+									]
+								},
+								"open":
+								{
+									"1":
+									[
+										6176,
+										6177
+									]
+								},
+								"unmatched":
+								{
+								}
+							},
+							"bracket_highlighter.clone_regions":
+							[
+								"bh_curly",
+								"bh_curly_center",
+								"bh_curly_open",
+								"bh_curly_close",
+								"bh_curly_content",
+								"bh_single_quote",
+								"bh_single_quote_center",
+								"bh_single_quote_open",
+								"bh_single_quote_close",
+								"bh_single_quote_content",
+								"bh_regex",
+								"bh_regex_center",
+								"bh_regex_open",
+								"bh_regex_close",
+								"bh_regex_content",
+								"bh_c_define",
+								"bh_c_define_center",
+								"bh_c_define_open",
+								"bh_c_define_close",
+								"bh_c_define_content",
+								"bh_tag",
+								"bh_tag_center",
+								"bh_tag_open",
+								"bh_tag_close",
+								"bh_tag_content",
+								"bh_double_quote",
+								"bh_double_quote_center",
+								"bh_double_quote_open",
+								"bh_double_quote_close",
+								"bh_double_quote_content",
+								"bh_round",
+								"bh_round_center",
+								"bh_round_open",
+								"bh_round_close",
+								"bh_round_content",
+								"bh_unmatched",
+								"bh_unmatched_center",
+								"bh_unmatched_open",
+								"bh_unmatched_close",
+								"bh_unmatched_content",
+								"bh_angle",
+								"bh_angle_center",
+								"bh_angle_open",
+								"bh_angle_close",
+								"bh_angle_content",
+								"bh_square",
+								"bh_square_center",
+								"bh_square_open",
+								"bh_square_close",
+								"bh_square_content",
+								"bh_default",
+								"bh_default_center",
+								"bh_default_open",
+								"bh_default_close",
+								"bh_default_content"
+							],
+							"bracket_highlighter.locations":
+							{
+								"close":
+								{
+								},
+								"icon":
+								{
+								},
+								"open":
+								{
+								},
+								"unmatched":
+								{
+								}
+							},
+							"bracket_highlighter.regions":
+							[
+								"bh_curly",
+								"bh_curly_center",
+								"bh_curly_open",
+								"bh_curly_close",
+								"bh_curly_content",
+								"bh_single_quote",
+								"bh_single_quote_center",
+								"bh_single_quote_open",
+								"bh_single_quote_close",
+								"bh_single_quote_content",
+								"bh_regex",
+								"bh_regex_center",
+								"bh_regex_open",
+								"bh_regex_close",
+								"bh_regex_content",
+								"bh_c_define",
+								"bh_c_define_center",
+								"bh_c_define_open",
+								"bh_c_define_close",
+								"bh_c_define_content",
+								"bh_tag",
+								"bh_tag_center",
+								"bh_tag_open",
+								"bh_tag_close",
+								"bh_tag_content",
+								"bh_double_quote",
+								"bh_double_quote_center",
+								"bh_double_quote_open",
+								"bh_double_quote_close",
+								"bh_double_quote_content",
+								"bh_round",
+								"bh_round_center",
+								"bh_round_open",
+								"bh_round_close",
+								"bh_round_content",
+								"bh_unmatched",
+								"bh_unmatched_center",
+								"bh_unmatched_open",
+								"bh_unmatched_close",
+								"bh_unmatched_content",
+								"bh_angle",
+								"bh_angle_center",
+								"bh_angle_open",
+								"bh_angle_close",
+								"bh_angle_content",
+								"bh_square",
+								"bh_square_center",
+								"bh_square_open",
+								"bh_square_close",
+								"bh_square_content",
+								"bh_default",
+								"bh_default_center",
+								"bh_default_open",
+								"bh_default_close",
+								"bh_default_content"
+							],
+							"syntax": "Packages/Python/Python.sublime-syntax",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 1217.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 0,
+					"type": "text"
+				},
+				{
+					"buffer": 11,
+					"file": "/C/yam/Studies/Projects/SixDoF/src/check_kriging.f08",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 1247,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								793,
+								801
+							]
+						],
+						"settings":
+						{
+							"bracket_highlighter.busy": false,
+							"bracket_highlighter.clone": -1,
+							"bracket_highlighter.clone_locations":
+							{
+								"close":
+								{
+									"1":
+									[
+										817,
+										818
+									]
+								},
+								"icon":
+								{
+									"1":
+									[
+										"Packages/BracketHighlighter/icons/round_bracket.png",
+										"brackethighlighter.round"
+									]
+								},
+								"open":
+								{
+									"1":
+									[
+										801,
+										802
+									]
+								},
+								"unmatched":
+								{
+								}
+							},
+							"bracket_highlighter.clone_regions":
+							[
+								"bh_curly",
+								"bh_curly_center",
+								"bh_curly_open",
+								"bh_curly_close",
+								"bh_curly_content",
+								"bh_single_quote",
+								"bh_single_quote_center",
+								"bh_single_quote_open",
+								"bh_single_quote_close",
+								"bh_single_quote_content",
+								"bh_regex",
+								"bh_regex_center",
+								"bh_regex_open",
+								"bh_regex_close",
+								"bh_regex_content",
+								"bh_c_define",
+								"bh_c_define_center",
+								"bh_c_define_open",
+								"bh_c_define_close",
+								"bh_c_define_content",
+								"bh_tag",
+								"bh_tag_center",
+								"bh_tag_open",
+								"bh_tag_close",
+								"bh_tag_content",
+								"bh_double_quote",
+								"bh_double_quote_center",
+								"bh_double_quote_open",
+								"bh_double_quote_close",
+								"bh_double_quote_content",
+								"bh_round",
+								"bh_round_center",
+								"bh_round_open",
+								"bh_round_close",
+								"bh_round_content",
+								"bh_unmatched",
+								"bh_unmatched_center",
+								"bh_unmatched_open",
+								"bh_unmatched_close",
+								"bh_unmatched_content",
+								"bh_angle",
+								"bh_angle_center",
+								"bh_angle_open",
+								"bh_angle_close",
+								"bh_angle_content",
+								"bh_square",
+								"bh_square_center",
+								"bh_square_open",
+								"bh_square_close",
+								"bh_square_content",
+								"bh_default",
+								"bh_default_center",
+								"bh_default_open",
+								"bh_default_close",
+								"bh_default_content"
+							],
+							"bracket_highlighter.locations":
+							{
+								"close":
+								{
+									"1":
+									[
+										817,
+										818
+									]
+								},
+								"icon":
+								{
+									"1":
+									[
+										"Packages/BracketHighlighter/icons/round_bracket.png",
+										"brackethighlighter.round"
+									]
+								},
+								"open":
+								{
+									"1":
+									[
+										801,
+										802
+									]
+								},
+								"unmatched":
+								{
+								}
+							},
+							"bracket_highlighter.regions":
+							[
+								"bh_curly",
+								"bh_curly_center",
+								"bh_curly_open",
+								"bh_curly_close",
+								"bh_curly_content",
+								"bh_single_quote",
+								"bh_single_quote_center",
+								"bh_single_quote_open",
+								"bh_single_quote_close",
+								"bh_single_quote_content",
+								"bh_regex",
+								"bh_regex_center",
+								"bh_regex_open",
+								"bh_regex_close",
+								"bh_regex_content",
+								"bh_c_define",
+								"bh_c_define_center",
+								"bh_c_define_open",
+								"bh_c_define_close",
+								"bh_c_define_content",
+								"bh_tag",
+								"bh_tag_center",
+								"bh_tag_open",
+								"bh_tag_close",
+								"bh_tag_content",
+								"bh_double_quote",
+								"bh_double_quote_center",
+								"bh_double_quote_open",
+								"bh_double_quote_close",
+								"bh_double_quote_content",
+								"bh_round",
+								"bh_round_center",
+								"bh_round_open",
+								"bh_round_close",
+								"bh_round_content",
+								"bh_unmatched",
+								"bh_unmatched_center",
+								"bh_unmatched_open",
+								"bh_unmatched_close",
+								"bh_unmatched_content",
+								"bh_angle",
+								"bh_angle_center",
+								"bh_angle_open",
+								"bh_angle_close",
+								"bh_angle_content",
+								"bh_square",
+								"bh_square_center",
+								"bh_square_open",
+								"bh_square_close",
+								"bh_square_content",
+								"bh_default",
+								"bh_default_center",
+								"bh_default_open",
+								"bh_default_close",
+								"bh_default_content"
+							],
+							"syntax": "Packages/Fortran/SublimeFortran/grammars/FortranModern.sublime-syntax",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 3,
 					"type": "text"
 				}
 			]
