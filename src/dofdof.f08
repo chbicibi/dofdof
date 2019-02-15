@@ -97,7 +97,7 @@ module equation
              + rho * vel2 * s_ref * b_span * cl / 2
         yaw = (ix - iy) * p * q - ixz * q * r &
             + rho * vel2 * s_ref * b_span * cn / 2
-        fr = yaw / iz + ixz / iz * roll / ix / (1 - ixz ** 2 / (ix * iz))
+        fr = (yaw / iz + ixz / iz * roll / ix) / (1 - ixz ** 2 / (ix * iz))
     end function fr
 
 
@@ -119,7 +119,7 @@ module equation
     real(8) function fphi(p, q, r, phi, tht)
         real(8), intent(in) :: p, q, r, phi, tht
 
-        fphi = (p + r * cos(phi) + q * sin(phi)) * tan(tht)
+        fphi = p + (r * cos(phi) + q * sin(phi)) * tan(tht)
     end function fphi
 
 
@@ -201,17 +201,17 @@ module equation
         k4_phi = delta_t * fphi(p+k3_p, q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)
         !-------------------output for eis-------------------------------------
 
-        u_next = u + (k1_u+(2*k2_u)+(2*k3_u)+k4_u)/6d0
-        v_next = v + (k1_v+(2*k2_v)+(2*k3_v)+k4_v)/6d0
-        w_next = w + (k1_w+(2*k2_w)+(2*k3_w)+k4_w)/6d0
+        u_next = u + (k1_u + 2 * k2_u + 2 * k3_u + k4_u) / 6d0
+        v_next = v + (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / 6d0
+        w_next = w + (k1_w + 2 * k2_w + 2 * k3_w + k4_w) / 6d0
 
-        p_next = p + (k1_p+(2*k2_p)+(2*k3_p)+k4_p)/6d0
-        q_next = q + (k1_q+(2*k2_q)+(2*k3_q)+k4_q)/6d0
-        r_next = r + (k1_r+(2*k2_r)+(2*k3_r)+k4_r)/6d0
+        p_next = p + (k1_p + 2 * k2_p + 2 * k3_p + k4_p) / 6d0
+        q_next = q + (k1_q + 2 * k2_q + 2 * k3_q + k4_q) / 6d0
+        r_next = r + (k1_r + 2 * k2_r + 2 * k3_r + k4_r) / 6d0
 
-        phi_next = phi + (k1_phi+(2*k2_phi)+(2*k3_phi)+k4_phi)/6d0
-        tht_next = tht + (k1_tht+(2*k2_tht)+(2*k3_tht)+k4_tht)/6d0
-        psi_next = psi + (k1_psi+(2*k2_psi)+(2*k3_psi)+k4_psi)/6d0
+        phi_next = phi + (k1_phi + 2 * k2_phi + 2 * k3_phi + k4_phi) / 6d0
+        tht_next = tht + (k1_tht + 2 * k2_tht + 2 * k3_tht + k4_tht) / 6d0
+        psi_next = psi + (k1_psi + 2 * k2_psi + 2 * k3_psi + k4_psi) / 6d0
     end subroutine rk4
 
 end module equation
