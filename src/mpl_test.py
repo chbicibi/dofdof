@@ -164,7 +164,7 @@ class Handler(object):
         # self.ax.set_xlim((self.x_min - x_margin, self.x_max + x_margin))
         # self.ax.set_ylim((self.y_min - y_margin, self.y_max + y_margin))
         self.axes[-1].set_ylim((-40, 40))
-        self.axes[-1].set_xlabel('time [t]')
+        self.axes[-1].set_xlabel('time [s]')
         self.axes[-1].set_ylabel('elevator [°]')
 
         self.axes[-1].plot(*self.array, 'o', label='Raw data', picker=5)
