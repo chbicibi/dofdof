@@ -16,8 +16,10 @@ def get_f_init(cdll):
     func_ptr = getattr(cdll, 'init')
     func_ptr.argtypes = []
     func_ptr.restype = ctypes.c_void_p
+
     def f_():
         func_ptr()
+
     return f_
 
 
@@ -32,6 +34,7 @@ def get_f_calc(cdll, n_data=2):
         np.ctypeslib.ndpointer(dtype=np.float64)
     ]
     func_ptr.restype = ctypes.c_void_p
+
     def f_(args, d):
         if not isinstance(args, np.ndarray):
             args = np.array(args)
@@ -40,6 +43,7 @@ def get_f_calc(cdll, n_data=2):
         result = np.zeros((len(args), n_data), dtype=np.float64)
         func_ptr(args, n, d, result)
         return result
+
     return f_
 
 
@@ -68,37 +72,14 @@ class Point2d(object):
         return self
 
 
-################################################################################
-
-def rand_it():
-    while True:
-        yield random.random()
-
-
-def onmousemove(event):
-    print('moved', event.x, event.y, event.xdata, event.ydata, end='\r')
-
-
-def get_points(n, x_max=1):
-    x = np.linspace(0, x_max, n)
-    # y = np.sin(2 * np.pi * x)
-    y = np.zeros_like(x) - 10
-    points = list(map(Point2d, x, y))
-    points[0].pinned = True
-    return points
-
-    # return list(islice(map(Point2d, rand_it(), rand_it()), n))
-
-
-################################################################################
-
 class Handler(object):
-    def __init__(self, data, func, fig, axes):
-        self.data = data
+    def __init__(self, points, func, fig, axes):
+        self.points = points
         self.func = func
         self.fig = fig
         self.axes = axes
         self.picked = None
+        self.busy = False
 
         fig.canvas.mpl_connect('pick_event', self.onpick)
         fig.canvas.mpl_connect('motion_notify_event', self.onmove)
@@ -112,16 +93,40 @@ class Handler(object):
         # self.fig.legend()
         plt.show()
 
+    def __len__(self):
+        return len(self.points)
+
     def onpick(self, event):
+        ''' 制御点クリック
+        '''
         if self.picked is not None:
             return
 
         # artist = event.artist
         # xdata = artist.get_xdata()
         # ydata = artist.get_ydata()
+
         ind = event.ind[0]
-        self.picked = self.data[ind]
+        self.picked = self.points[ind]
         print('picked:', ind, end=' '*20+'\r')
+
+        if event.mouseevent.button == 1:
+            # 左クリック
+            pass
+
+        if event.mouseevent.button == 2:
+            # ホイールクリック
+            if ind == len(self) - 1:
+                self.picked.x *= 1.2
+                self.calc_data()
+                self.plot_data()
+
+        elif event.mouseevent.button == 3:
+            # 右クリック
+            if ind and len(self) > 1:
+                self.points.pop(ind)
+                self.calc_data()
+                self.plot_data()
 
     def onmove(self, event):
         if self.picked is None:
@@ -131,34 +136,46 @@ class Handler(object):
         y = event.ydata
         if x is None or y is None:
             return
-        print('moving', end=' '*20+'\r')
 
+        print('moving', end=' '*20+'\r')
         self.picked.setloc(x, y)
         self.calc_data()
         self.plot_data()
 
     def onrelease(self, event):
+        if self.picked is None:
+            return
+
         print('released', end=' '*20+'\r')
+        self.picked = None
         self.calc_line()
         self.plot_data()
-        self.picked = None
+        self.plot_result() # 経路計算
 
     def onclick(self, event):
-        ''' 右クリック '''
-
-        if not event.button == 3:
+        if self.picked is not None:
             return
-        print('clicked', end=' '*20+'\r')
-        self.plot_result()
+
+        if event.button == 3:
+            # 右クリック
+            x = event.xdata
+            y = event.ydata
+            if x is None or y is None:
+                return
+
+            print('clicked', end=' '*20+'\r')
+            point = Point2d(x, y)
+            self.points.append(point)
+            self.picked = point
+            self.calc_data()
+            self.plot_data()
 
     def calc_data(self):
-        self.data.sort()
-        array = np.array(list(map(attrgetter('array'), self.data))).T
-        self.array = array
+        self.points.sort()
+        self.array = np.array(list(map(attrgetter('array'), self.points))).T
 
     def plot_data(self):
         self.axes[-1].cla()
-
         # x_margin = 0.1 * (self.x_max - self.x_min)
         # y_margin = 0.1 * (self.y_max - self.y_min)
         # self.ax.set_xlim((self.x_min - x_margin, self.x_max + x_margin))
@@ -166,9 +183,9 @@ class Handler(object):
         self.axes[-1].set_ylim((-40, 40))
         self.axes[-1].set_xlabel('time [s]')
         self.axes[-1].set_ylabel('elevator [°]')
-
         self.axes[-1].plot(*self.array, 'o', label='Raw data', picker=5)
         self.axes[-1].plot(self.linex, self.liney, '-', label='Cubic spline')
+        self.axes[-1].patch.set_alpha(0)
         self.fig.canvas.draw()
 
     def calc_line(self, n=100):
@@ -185,19 +202,21 @@ class Handler(object):
         return liney
 
     def plot_result(self):
-        x, z, a, t = self.func(self.get_linedata)
+        if self.busy:
+            return
 
-        self.axes[0].cla()
-        self.axes[0].plot(x, z, '-')
-        self.axes[0].set_xlabel('x [m]')
-        self.axes[0].set_ylabel('z [m]')
+        try:
+            self.busy = True
+            for i, data in enumerate(self.func(self.get_linedata)):
+                self.axes[i].cla()
+                self.axes[i].plot(data['x'], data['y'], '-')
+                self.axes[i].set_xlabel(data.get('lx'))
+                self.axes[i].set_ylabel(data.get('ly'))
+                self.axes[i].patch.set_alpha(0)
+            self.fig.canvas.draw()
 
-        self.axes[1].cla()
-        self.axes[1].plot(a, t, '-')
-        self.axes[1].set_xlabel('time [s]')
-        # self.axes[1].set_ylabel('angle of attack [°]')
-        self.axes[1].set_ylabel('$\\theta$ [°]')
-        self.fig.canvas.draw()
+        finally:
+            self.busy = False
 
     @property
     def x_min(self):
@@ -216,16 +235,28 @@ class Handler(object):
         return self.array[1, :].max()
 
 
-def plot_points_main():
+################################################################################
 
-    # CDLLインスタンス作成
+def get_points(n, x_max=1):
+    ''' 入力の初期値を生成
+    '''
+    x = np.linspace(0, x_max, n)
+    y = np.zeros_like(x) - 10
+    points = list(map(Point2d, x, y))
+    points[0].pinned = True
+    return points
+
+
+def plot_points_main():
+    ''' CDLLインスタンス作成
+    '''
     libname = 'libdof.dll'
     loader_path = '.'
     cdll = np.ctypeslib.load_library(libname, loader_path)
 
     # 関数取得
     f_init = get_f_init(cdll)
-    f_calc = get_f_calc(cdll, n_data=6)
+    f_calc = get_f_calc(cdll, n_data=7)
 
     # 初期化: 開始時刻設定
     f_init()
@@ -235,15 +266,32 @@ def plot_points_main():
         elv = callback(dt)
         orbit = f_calc(elv, dt)
         times = np.arange(len(elv)) * dt
-        return orbit[:, 0], orbit[:, 1], times, orbit[:, 4]
+        # x0, y0 = orbit[:, 0], orbit[:, 1]
+        # data0 = {'x': times, 'y': orbit[:, 5], 'lx': 'x [m]', 'ly': 'z [m]'}
+        data = (
+            {'x': orbit[:, 0], 'y': orbit[:, 1], 'lx': 'x [m]', 'ly': 'z [m]'},
+            {'x': times, 'y': orbit[:, 5], 'lx': 'time [t]', 'ly': '$\\alpha$ [°]'},
+            {'x': times, 'y': orbit[:, 4], 'lx': 'time [t]', 'ly': '$\\theta$ [°]'},
+            # {'x': times, 'y': orbit[:, 2], 'lx': 'time [t]', 'ly': '$c_m$ [-]'},
+            {'x': times, 'y': orbit[:, 6], 'lx': 'time [t]', 'ly': 'Ma [-]'}
+        )
+
+            # self.axes[1].cla()
+            # self.axes[1].plot(a, t, '-')
+            # self.axes[1].set_xlabel('time [s]')
+            # # self.axes[1].set_ylabel('angle of attack [°]')
+            # # self.axes[1].set_ylabel('$\\theta$ [°]')
+            # self.axes[1].set_ylabel('value')
+        return data
         # return times, orbit[:, 4], times, orbit[:, 5] # aoa, cx
 
 
-    fig, axes = plt.subplots(3, 1, figsize=(10, 7))
-    fig.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=1,
-                        wspace=0, hspace=0.25)
+    fig, axes = plt.subplots(5, 1, figsize=(7, 8))
+    fig.subplots_adjust(left=0.12, bottom=0.06, right=0.95, top=1,
+                        wspace=0, hspace=0.4)
+    fig.patch.set_alpha(0.5)
 
-    points = get_points(10, x_max=20)
+    points = get_points(10, x_max=100)
     handler = Handler(points, func=func, fig=fig, axes=axes)
 
     # plot_points_with_spline(points, ax)

@@ -1,14 +1,14 @@
-!=======================================================================
-!         6DoF EOM solver
-!=======================================================================
+!===============================================================================
+!
+!===============================================================================
 
 module global
     implicit none
 
     ! 定数
-    real(8), parameter :: pi = 4 * atan(1d0)
-    real(8), parameter :: radians = pi / 180d0
-    real(8), parameter :: degrees = 180d0 / pi
+    real(8), parameter :: PI = 4 * atan(1d0)
+    real(8), parameter :: RADIANS = PI / 180d0
+    real(8), parameter :: DEGREES = 180d0 / PI
 
     ! 運動計算用パラメータ
     real(8) :: dt                        ! 時間刻み幅
@@ -27,16 +27,16 @@ module global
 end module global
 
 
-!=======================================================================
-!     function of EOM ( 6 degrees of freedom )
-!=======================================================================
+!===============================================================================
+!
+!===============================================================================
 
 module mod_calculation
     implicit none
 
     contains
 
-    subroutine runge_kutta(func, X, X_next, h, s)
+    subroutine runge_kutta(func, X, h, s, X_next)
         ! 陽的ルンゲ・クッタ法による常微分方程式 dX/dt = f(X) の計算
         ! 入力:
         !   func : 関数f(X) => K
@@ -46,7 +46,7 @@ module mod_calculation
         ! 出力:
         !   X_next(m) : 次ステップの変数
         ! 変数:
-        !   m : Xの次元
+        !   m : Xの次元数
         !   C : 係数ベクトル
 
         real(8), intent(in) :: X(:), h
@@ -55,23 +55,20 @@ module mod_calculation
         real(8) :: C(s), K(size(X), 0:s)
         integer :: i, m
 
-        ! real(8) :: T0(size(X)), T1(size(X))
-
         select case(s)
-        case(1) ! 1次 (オイラー法)
+        case(1)              ! 1次 (オイラー法)
             C = [1]
-        case(2) ! 2次 (ホイン法)
+        case(2)              ! 2次 (ホイン法)
             C = [1, 1]
-        case(4) ! 4次
+        case(4)              ! 4次
             C = [1, 2, 2, 1]
         case default
-            print *, "ルンゲ・クッタ法の階数が正しくありません"
+            print *, "Error: Invalid DEGREES of the Runge–Kutta method."
             call exit(1)
         end select
 
         m = size(X)
         K = 0
-        X_next = 0
 
         do i = 1, s
             call func(X + K(:, i-1) * h / C(i), K(:, i))
@@ -82,6 +79,10 @@ module mod_calculation
 
 end module mod_calculation
 
+
+!===============================================================================
+!
+!===============================================================================
 
 module mod_aircraft
     use global
@@ -99,6 +100,7 @@ module mod_aircraft
         real(8) :: mach_number
         real(8) :: angle_of_attack
 
+        real(8) :: t             ! 時刻
         real(8) :: elevator
         real(8) :: cx, cm, cz
 
@@ -123,19 +125,19 @@ module mod_aircraft
         psi = self%psi
 
         velocity        = sqrt(u ** 2 + v ** 2 + w ** 2)
-        angle_of_attack = degrees * atan(w / u)
+        angle_of_attack = DEGREES * atan(w / u)
         mach_number     = velocity / speed_of_sound
 
-        u_earth = cos(tht) * cos(psi) * u                                    &
+        u_earth = cos(tht) * cos(psi)                                    * u &
                 + (sin(phi) * sin(tht) * cos(psi) - cos(phi) * sin(psi)) * v &
                 + (cos(phi) * sin(tht) * cos(psi) + sin(phi) * sin(psi)) * w
 
-        v_earth = cos(tht) * sin(psi) * u                                    &
+        v_earth = cos(tht) * sin(psi)                                    * u &
                 + (sin(phi) * sin(tht) * sin(psi) + cos(phi) * cos(psi)) * v &
                 + (cos(phi) * sin(tht) * sin(psi) - sin(phi) * cos(psi)) * w
 
-        w_earth = sin(tht) * u             &
-                - sin(phi) * cos(tht) * v  &
+        w_earth = sin(tht)            * u &
+                - sin(phi) * cos(tht) * v &
                 - cos(phi) * cos(tht) * w
 
         self%u_earth = u_earth
@@ -147,15 +149,16 @@ module mod_aircraft
     end subroutine set_state
 
 
-    ! ==========================================================================
-    ! 運動計算
-    ! ==========================================================================
+    ! ================================================================
+    ! function of EOM ( 6 DEGREES of freedom )
+    ! ================================================================
+
     subroutine func(X, K)
         real(8), intent(in) :: X(9)
         real(8), intent(out) :: K(9)
         real(8) :: u, v, w, p, q, r, phi, tht, psi
         real(8) :: fu, fv, fw, fp, fq, fr, fphi, ftht, fpsi
-        real(8) :: vel_sq, roll, pitch, yaw, rvs
+        real(8) :: vel_sq, coef1, coef2, roll, pitch, yaw
 
         u = X(1)
         v = X(2)
@@ -167,20 +170,17 @@ module mod_aircraft
         tht = X(8)
         psi = X(9)
 
-        vel_sq = sum(X(1:3) ** 2) ! == u^2 + v^2 + w^2
+        vel_sq = sum(X(1:3) ** 2)    ! == u^2 + v^2 + w^2 (== |V|^2)
+        coef1 = rho * vel_sq * s_ref ! == ρ * |V|^2 * S
+        coef2 = coef1 / (2 * m_body) ! == ρ * |V|^2 * S / 2m
 
-        roll  = (iy - iz) * q * r + ixz * p * q             &
-              + rho * vel_sq * s_ref * b_span * cl / 2
-        pitch = (iz - ix) * r * p + ixz * (r ** 2 - p ** 2) &
-              + rho * vel_sq * s_ref * mac * cm / 2
-        yaw   = (ix - iy) * p * q - ixz * q * r             &
-              + rho * vel_sq * s_ref * b_span * cn / 2
+        roll  = (iy - iz) * q * r + ixz * p * q             + coef1 * b_span * cl / 2
+        pitch = (iz - ix) * r * p + ixz * (r ** 2 - p ** 2) + coef1 * mac    * cm / 2
+        yaw   = (ix - iy) * p * q + ixz * q * r             + coef1 * b_span * cn / 2
 
-        rvs = rho * vel_sq * s_ref / (2 * m_body)
-
-        fu = -q * w + r * v - grav * sin(tht)            + rvs * cx
-        fv = -r * u + p * w + grav * cos(tht) * sin(phi) + rvs * cy
-        fw = -p * v + q * u + grav * cos(tht) * cos(phi) + rvs * cz
+        fu = -q * w + r * v - grav * sin(tht)            + coef2 * cx
+        fv = -r * u + p * w + grav * cos(tht) * sin(phi) + coef2 * cy
+        fw = -p * v + q * u + grav * cos(tht) * cos(phi) + coef2 * cz
 
         fp = (roll / ix + ixz / ix * yaw / iz) / (1 - ixz ** 2 / (ix * iz))
         fq = pitch / iy
@@ -194,35 +194,38 @@ module mod_aircraft
     end subroutine func
 
 
-    subroutine calc_motion(ac_in, ac_out)
-        type(aircraft), intent(in) :: ac_in
-        type(aircraft), intent(out) :: ac_out
+    subroutine calc_motion(ac, ac_next)
+        type(aircraft), intent(in) :: ac
+        type(aircraft), intent(out) :: ac_next
         real(8) :: X(9), X_next(9)
 
-        X = [ac_in%u, ac_in%v, ac_in%w, ac_in%p, ac_in%q, ac_in%r, &
-             ac_in%phi, ac_in%tht, ac_in%psi]
+        X = [ac%u, ac%v, ac%w, ac%p, ac%q, ac%r, ac%phi, ac%tht, ac%psi]
 
-        call runge_kutta(func, X, X_next, dt, 4)
+        call runge_kutta(func, X, dt, 4, X_next)
 
-        ac_out%u = X_next(1)
-        ac_out%v = X_next(2)
-        ac_out%w = X_next(3)
-        ac_out%p = X_next(4)
-        ac_out%q = X_next(5)
-        ac_out%r = X_next(6)
-        ac_out%phi = X_next(7)
-        ac_out%tht = X_next(8)
-        ac_out%psi = X_next(9)
+        ac_next%u = X_next(1)
+        ac_next%v = X_next(2)
+        ac_next%w = X_next(3)
+        ac_next%p = X_next(4)
+        ac_next%q = X_next(5)
+        ac_next%r = X_next(6)
+        ac_next%phi = X_next(7)
+        ac_next%tht = X_next(8)
+        ac_next%psi = X_next(9)
 
-        call ac_out%set_state
+        call ac_next%set_state
 
-        ac_out%x = ac_in%x + ac_out%u_earth * dt
-        ac_out%y = ac_in%y + ac_out%v_earth * dt
-        ac_out%z = ac_in%z + ac_out%w_earth * dt
+        ac_next%x = ac%x + ac_next%u_earth * dt
+        ac_next%y = ac%y + ac_next%v_earth * dt
+        ac_next%z = ac%z + ac_next%w_earth * dt
     end subroutine calc_motion
 
 end module mod_aircraft
 
+
+!===============================================================================
+!
+!===============================================================================
 
 module dof
     use iso_c_binding
@@ -231,8 +234,6 @@ module dof
     use dof_kriging
     implicit none
 
-    type(aircraft), allocatable :: ac(:)
-
     real(8) x_start, y_start, z_start
     real(8) u_start, v_start, w_start
     real(8) p_start, q_start, r_start
@@ -240,9 +241,9 @@ module dof
 
     contains
 
-    ! ======================================================
+    ! ================================================================
     ! 初期化
-    ! ======================================================
+    ! ================================================================
 
     subroutine read_input
         integer :: unit
@@ -266,12 +267,12 @@ module dof
         read(unit, *) phi_start, tht_start, psi_start
         close(unit)
 
-        p_start = radians * p_start
-        q_start = radians * q_start
-        r_start = radians * r_start
-        phi_start = radians * phi_start
-        tht_start = radians * tht_start
-        psi_start = radians * psi_start
+        p_start = RADIANS * p_start
+        q_start = RADIANS * q_start
+        r_start = RADIANS * r_start
+        phi_start = RADIANS * phi_start
+        tht_start = RADIANS * tht_start
+        psi_start = RADIANS * psi_start
     end subroutine read_input
 
 
@@ -295,16 +296,33 @@ module dof
     end subroutine init_aircraft
 
 
-    ! ======================================================
+    logical function check_break(ac) result(res)
+        type(aircraft), intent(inout) :: ac
+
+        if (ac%angle_of_attack < -5 .or. ac%angle_of_attack > 10) then
+            print "(a,f0.1,a)", 'Error: "Angle of Attack" is out of range! (', ac%t, "s)"
+            res = .true.
+        else if (ac%elevator < -40 .or. ac%elevator > 40) then
+            print "(a,f0.1,a)", 'Error: "Elevator" is out of range! (', ac%t, "s)"
+            res = .true.
+        else if (ac%mach_number < 0.1d0 .or. ac%mach_number > 0.5d0) then
+            print "(a,f0.1,a)", 'Error: "Mach Number" is out of range! (', ac%t, "s)"
+            res = .true.
+        else
+            res = .false.
+        end if
+    end function check_break
+
+
+    ! ================================================================
     ! インターフェイス
-    ! ======================================================
+    ! ================================================================
 
     subroutine init() bind(c, name="init")
         call read_input
-        ! n_step = time_end / dt
 
-        ! call init_krig(num_var=3, pop_size=100, steps=100, scale=[100d0, 100d0, 100d0])
-        call load_krig(num_var=3)
+        ! call init_krig(n_var=3, pop_size=100, steps=30, scale=[100d0, 50d0, 100d0])
+        call load_krig(n_var=3)
     end subroutine init
 
 
@@ -312,11 +330,13 @@ module dof
         integer(c_int), intent(in), value :: n
         real(c_double), intent(in), value :: d
         real(c_double), intent(in) :: elevator_in(n)
-        real(c_double), intent(out) :: output(6, n)
+        real(c_double), intent(out) :: output(7, n)
+        type(aircraft), allocatable :: ac(:)
         real(8) :: angle_of_attack, elevator, mach_number
         integer :: i
 
         dt = d
+        output = transfer(z'7ff8000000000000', 0d0) ! == NaN
 
         if (allocated(ac)) then
             if (size(ac) /= n) then
@@ -328,26 +348,22 @@ module dof
         end if
 
         call init_aircraft(ac(1))
-        ! ac(1)%elevator = elevator_in(1)
-
-        ! print *, 1, ac(1)%x, ac(1)%z
-        ! output(1, 1) = ac(1)%x
-        ! output(2, 1) = ac(1)%z
-        ! output(3, 1) = ac(1)%u
-        ! output(4, 1) = ac(1)%mach_number
-        ! output(5, 1) = ac(1)%angle_of_attack
-        ! output(6, 1) = ac(1)%tht * degrees
 
         do i = 1, n
+            ac(i)%t = dt * (i - 1)
             ac(i)%elevator = elevator_in(i)
 
             angle_of_attack = ac(i)%angle_of_attack
             elevator = ac(i)%elevator
             mach_number = ac(i)%mach_number
 
-            angle_of_attack = min(max(angle_of_attack, -5d0), 10d0)
-            elevator = min(max(elevator, -40d0), 40d0)
-            mach_number = min(max(mach_number, 0.1d0), 0.5d0)
+            if (check_break(ac(i))) then
+                exit
+            end if
+
+            ! angle_of_attack = min(max(angle_of_attack, -5d0), 10d0)
+            ! elevator = min(max(elevator, -40d0), 40d0)
+            ! mach_number = min(max(mach_number, 0.1d0), 0.5d0)
 
             cx = estimate(1, angle_of_attack, elevator, mach_number)
             cm = estimate(2, angle_of_attack, elevator, mach_number)
@@ -365,10 +381,12 @@ module dof
             ! print *, i, ac(i)%x, ac(i)%z
             output(1, i) = ac(i)%x
             output(2, i) = ac(i)%z
-            output(3, i) = ac(i)%u_earth
-            output(4, i) = ac(i)%w_earth
-            output(5, i) = ac(i)%tht * degrees
+            output(3, i) = ac(i)%cm
+            output(4, i) = ac(i)%q * DEGREES
+            output(5, i) = ac(i)%tht * DEGREES
             output(6, i) = ac(i)%angle_of_attack
+            output(7, i) = ac(i)%mach_number
         end do
     end subroutine calc
+
 end module dof
