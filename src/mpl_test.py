@@ -195,7 +195,8 @@ class Handler(object):
         self.axes[1].cla()
         self.axes[1].plot(a, t, '-')
         self.axes[1].set_xlabel('time [s]')
-        self.axes[1].set_ylabel('angle of attack [°]')
+        # self.axes[1].set_ylabel('angle of attack [°]')
+        self.axes[1].set_ylabel('$\\theta$ [°]')
         self.fig.canvas.draw()
 
     @property
@@ -234,7 +235,7 @@ def plot_points_main():
         elv = callback(dt)
         orbit = f_calc(elv, dt)
         times = np.arange(len(elv)) * dt
-        return orbit[:, 0], orbit[:, 1], times, orbit[:, 5]
+        return orbit[:, 0], orbit[:, 1], times, orbit[:, 4]
         # return times, orbit[:, 4], times, orbit[:, 5] # aoa, cx
 
 

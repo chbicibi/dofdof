@@ -16,7 +16,7 @@ module global
     ! 空力・運動計算用パラメータ
     real(8) :: grav                      ! 重力加速度
     real(8) :: rho                       ! 空気密度
-    real(8) :: speed_of_sound
+    real(8) :: speed_of_sound            ! 音速
 
     real(8) :: s_ref                     ! 代表面積
     real(8) :: m_body                    ! 機体重量
@@ -24,210 +24,75 @@ module global
     real(8) :: b_span                    ! 翼スパン
     real(8) :: cx, cy, cz, cl, cm, cn    ! 空力係数
     real(8) :: ix, iy, iz, ixy, ixz, iyz ! 慣性モーメント
-
-    ! real(8) cx_g, cm_g, cz_g
-    ! real(8) x_thrust
-
-    ! real(8) ei
-    ! real(8) cx_pred, cy_pred, cz_pred
-    ! real(8) cl_pred, cm_pred, cn_pred
 end module global
 
 
 !=======================================================================
 !     function of EOM ( 6 degrees of freedom )
 !=======================================================================
-module rk4
-    use global
+
+module mod_calculation
     implicit none
 
     contains
 
-    !-------translational motion
-    real(8) function fu(vel2, q, w, r, v, tht)
-        real(8), intent(in) :: vel2, q, w, r, v, tht
+    subroutine runge_kutta(func, X, X_next, h, s)
+        ! 陽的ルンゲ・クッタ法による常微分方程式 dX/dt = f(X) の計算
+        ! 入力:
+        !   func : 関数f(X) => K
+        !   X(m) : 入力変数
+        !   h : 刻み幅
+        !   s : 次数
+        ! 出力:
+        !   X_next(m) : 次ステップの変数
+        ! 変数:
+        !   m : Xの次元
+        !   C : 係数ベクトル
 
-        fu = -q * w + r * v - grav * sin(tht) &
-           + rho * vel2 * s_ref * cx / (2 * m_body)
-    end function fu
+        real(8), intent(in) :: X(:), h
+        integer, intent(in) :: s
+        real(8), intent(out) :: X_next(:)
+        real(8) :: C(s), K(size(X), 0:s)
+        integer :: i, m
 
+        ! real(8) :: T0(size(X)), T1(size(X))
 
-    real(8) function fv(vel2, r, u, p, w, tht, phi)
-        real(8), intent(in) :: vel2, r, u, p, w, tht, phi
+        select case(s)
+        case(1) ! 1次 (オイラー法)
+            C = [1]
+        case(2) ! 2次 (ホイン法)
+            C = [1, 1]
+        case(4) ! 4次
+            C = [1, 2, 2, 1]
+        case default
+            print *, "ルンゲ・クッタ法の階数が正しくありません"
+            call exit(1)
+        end select
 
-        fv = -r * u + p * w + grav * cos(tht) * sin(phi) &
-           + rho * vel2 * s_ref * cy / (2 * m_body)
-    end function fv
+        m = size(X)
+        K = 0
+        X_next = 0
 
+        do i = 1, s
+            call func(X + K(:, i-1) * h / C(i), K(:, i))
+        end do
 
-    real(8) function fw(vel2, p, v, q, u, tht, phi)
-        real(8), intent(in) :: vel2, p, v, q, u, tht, phi
+        X_next = X + sum(K(:, 1:) * spread(C, 1, m), dim=2) * h / sum(C)
+    end subroutine runge_kutta
 
-        fw = -p * v + q * u + grav * cos(tht) * cos(phi) &
-           + rho * vel2 * s_ref * cz / (2 * m_body)
-    end function fw
-
-
-    !-------angular acceleration
-    real(8) function fp(vel2, p, q, r)
-        real(8), intent(in) :: vel2, p, q, r
-        real(8) :: roll, yaw
-
-        roll = (iy - iz) * q * r + ixz * p * q &
-             + rho * vel2 * s_ref * b_span * cl / 2
-        yaw = (ix - iy) * p * q - ixz * q * r &
-            + rho * vel2 * s_ref * b_span * cn / 2
-        fp = (roll / ix + ixz / ix * yaw / iz) / (1 - ixz ** 2 / (ix * iz))
-    end function fp
-
-
-    real(8) function fq(vel2, p, r)
-        real(8), intent(in) :: vel2, p, r
-        real(8) :: pitch
-
-        pitch = (iz - ix) * r * p + ixz * (r ** 2 - p ** 2) &
-              + rho * vel2 * s_ref * mac * cm / 2
-        fq = pitch / iy
-    end function fq
-
-
-    real(8) function fr(vel2, p, q, r)
-        real(8), intent(in) :: vel2, p, q, r
-        real(8) :: roll, yaw
-
-        roll = (iy - iz) * q * r + ixz * p * q &
-             + rho * vel2 * s_ref * b_span * cl / 2
-        yaw = (ix - iy) * p * q - ixz * q * r &
-            + rho * vel2 * s_ref * b_span * cn / 2
-        fr = (yaw / iz + ixz / iz * roll / ix) / (1 - ixz ** 2 / (ix * iz))
-    end function fr
+end module mod_calculation
 
 
-    !-------attitude angle
-    real(8) function fpsi(q, r, phi, tht)
-        real(8), intent(in) :: q, r, phi, tht
-
-        fpsi = (r * cos(phi) + q * sin(phi)) / cos(tht)
-    end function fpsi
-
-
-    real(8) function ftht(q, r, phi, tht)
-        real(8), intent(in) :: q, r, phi, tht
-
-        ftht = q * cos(phi) - r * sin(phi)
-    end function ftht
-
-
-    real(8) function fphi(p, q, r, phi, tht)
-        real(8), intent(in) :: p, q, r, phi, tht
-
-        fphi = p + (r * cos(phi) + q * sin(phi)) * tan(tht)
-    end function fphi
-
-
-    subroutine rk4(u, v, w, p, q, r, phi, tht, psi,     &
-        u_next, v_next, w_next, p_next, q_next, r_next, &
-        phi_next, tht_next, psi_next)
-
-        real(8), intent(in) :: u, v, w, p, q, r, phi, tht, psi
-        real(8), intent(out) :: u_next, v_next, w_next
-        real(8), intent(out) :: p_next, q_next, r_next
-        real(8), intent(out) :: phi_next, tht_next, psi_next
-
-        real(8) :: k1_u, k1_v, k1_w
-        real(8) :: k2_u, k2_v, k2_w
-        real(8) :: k3_u, k3_v, k3_w
-        real(8) :: k4_u, k4_v, k4_w
-
-        real(8) :: k1_p, k1_q, k1_r
-        real(8) :: k2_p, k2_q, k2_r
-        real(8) :: k3_p, k3_q, k3_r
-        real(8) :: k4_p, k4_q, k4_r
-
-        real(8) :: k1_phi, k1_tht, k1_psi
-        real(8) :: k2_phi, k2_tht, k2_psi
-        real(8) :: k3_phi, k3_tht, k3_psi
-        real(8) :: k4_phi, k4_tht, k4_psi
-
-        real(8) :: vel2
-
-        vel2 = u ** 2 + v ** 2 + w ** 2
-
-        !-------------------k1
-        k1_u = dt * fu(vel2, q, w, r, v, tht)
-        k1_v = dt * fv(vel2, r, u, p, w, tht, phi)
-        k1_w = dt * fw(vel2, p, v, q, u, tht, phi)
-
-        k1_p = dt * fp(vel2, p, q, r)
-        k1_q = dt * fq(vel2, p, r)
-        k1_r = dt * fr(vel2, p, q, r)
-
-        k1_psi = dt * fpsi(q, r, phi, tht)
-        k1_tht = dt * ftht(q, r, phi, tht)
-        k1_phi = dt * fphi(p, q, r, phi, tht)
-        !-------------------k2
-        k2_u = dt * fu(vel2, q+k1_q/2, w+k1_w/2, r+k1_r/2, v+k1_v/2, tht+k1_tht/2)
-        k2_v = dt * fv(vel2, r+k1_r/2, u+k1_u/2, p+k1_p/2, w+k1_w/2, tht+k1_tht/2, phi+k1_phi/2)
-        k2_w = dt * fw(vel2, p+k1_p/2, v+k1_v/2, q+k1_q/2, u+k1_u/2, tht+k1_tht/2, phi+k1_phi/2)
-
-        k2_p = dt * fp(vel2, p+k1_p/2, q+k1_q/2, r+k1_r/2)
-        k2_q = dt * fq(vel2, p+k1_p/2, r+k1_r/2)
-        k2_r = dt * fr(vel2, p+k1_p/2, q+k1_q/2, r+k1_r/2)
-
-        k2_psi = dt * fpsi(q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)
-        k2_tht = dt * ftht(q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)
-        k2_phi = dt * fphi(p+k1_p/2, q+k1_q/2, r+k1_r/2, phi+k1_phi/2, tht+k1_tht/2)
-        !-------------------k3
-        k3_u = dt * fu(vel2, q+k2_q/2, w+k2_w/2, r+k2_r/2, v+k2_v/2, tht+k2_tht/2)
-        k3_v = dt * fv(vel2, r+k2_r/2, u+k2_u/2, p+k2_p/2, w+k2_w/2, tht+k2_tht/2, phi+k2_phi/2)
-        k3_w = dt * fw(vel2, p+k2_p/2, v+k2_v/2, q+k2_q/2, u+k2_u/2, tht+k2_tht/2, phi+k2_phi/2)
-
-        k3_p = dt * fp(vel2, p+k2_p/2, q+k2_q/2, r+k2_r/2)
-        k3_q = dt * fq(vel2, p+k2_p/2, r+k2_r/2)
-        k3_r = dt * fr(vel2, p+k2_p/2, q+k2_q/2, r+k2_r/2)
-
-        k3_psi = dt * fpsi(q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)
-        k3_tht = dt * ftht(q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)
-        k3_phi = dt * fphi(p+k2_p/2, q+k2_q/2, r+k2_r/2, phi+k2_phi/2, tht+k2_tht/2)
-        !-------------------k4
-        k4_u = dt * fu(vel2, q+k3_q, w+k3_w, r+k3_r, v+k3_v, tht+k3_tht)
-        k4_v = dt * fv(vel2, r+k3_r, u+k3_u, p+k3_p, w+k3_w, tht+k3_tht, phi+k3_phi)
-        k4_w = dt * fw(vel2, p+k3_p, v+k3_v, q+k3_q, u+k3_u, tht+k3_tht, phi+k3_phi)
-
-        k4_p = dt * fp(vel2, p+k3_p, q+k3_q, r+k3_r)
-        k4_q = dt * fq(vel2, p+k3_p, r+k3_r)
-        k4_r = dt * fr(vel2, p+k3_p, q+k3_q, r+k3_r)
-
-        k4_psi = dt * fpsi(q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)
-        k4_tht = dt * ftht(q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)
-        k4_phi = dt * fphi(p+k3_p, q+k3_q, r+k3_r, phi+k3_phi, tht+k3_tht)
-        !-------------------output for eis-------------------------------------
-
-        u_next = u + (k1_u + 2 * k2_u + 2 * k3_u + k4_u) / 6d0
-        v_next = v + (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / 6d0
-        w_next = w + (k1_w + 2 * k2_w + 2 * k3_w + k4_w) / 6d0
-
-        p_next = p + (k1_p + 2 * k2_p + 2 * k3_p + k4_p) / 6d0
-        q_next = q + (k1_q + 2 * k2_q + 2 * k3_q + k4_q) / 6d0
-        r_next = r + (k1_r + 2 * k2_r + 2 * k3_r + k4_r) / 6d0
-
-        phi_next = phi + (k1_phi + 2 * k2_phi + 2 * k3_phi + k4_phi) / 6d0
-        tht_next = tht + (k1_tht + 2 * k2_tht + 2 * k3_tht + k4_tht) / 6d0
-        psi_next = psi + (k1_psi + 2 * k2_psi + 2 * k3_psi + k4_psi) / 6d0
-    end subroutine rk4
-
-end module rk4
-
-
-module flight
+module mod_aircraft
     use global
+    use mod_calculation
     implicit none
 
     type :: aircraft
-        real(8) :: x, y, z ! 位置
-        real(8) :: u, v, w ! 速度
-        real(8) :: p, q, r ! 角速度
-        real(8) :: phi, theta, psi ! 角度
+        real(8) :: x, y, z       ! 位置
+        real(8) :: u, v, w       ! 速度
+        real(8) :: p, q, r       ! 角速度
+        real(8) :: phi, tht, psi ! 姿勢角
 
         real(8) :: u_earth, v_earth, w_earth
         real(8) :: velocity
@@ -246,7 +111,7 @@ module flight
 
     subroutine set_state(self)
         class(aircraft), intent(inout) :: self
-        real(8) :: u, v, w, tht, phi, psi
+        real(8) :: u, v, w, phi, tht, psi
         real(8) :: u_earth, v_earth, w_earth
         real(8) :: velocity, angle_of_attack, mach_number
 
@@ -254,7 +119,7 @@ module flight
         v = self%v
         w = self%w
         phi = self%phi
-        tht = self%theta
+        tht = self%tht
         psi = self%psi
 
         velocity        = sqrt(u ** 2 + v ** 2 + w ** 2)
@@ -281,14 +146,88 @@ module flight
         self%angle_of_attack = angle_of_attack
     end subroutine set_state
 
-end module flight
+
+    ! ==========================================================================
+    ! 運動計算
+    ! ==========================================================================
+    subroutine func(X, K)
+        real(8), intent(in) :: X(9)
+        real(8), intent(out) :: K(9)
+        real(8) :: u, v, w, p, q, r, phi, tht, psi
+        real(8) :: fu, fv, fw, fp, fq, fr, fphi, ftht, fpsi
+        real(8) :: vel_sq, roll, pitch, yaw, rvs
+
+        u = X(1)
+        v = X(2)
+        w = X(3)
+        p = X(4)
+        q = X(5)
+        r = X(6)
+        phi = X(7)
+        tht = X(8)
+        psi = X(9)
+
+        vel_sq = sum(X(1:3) ** 2) ! == u^2 + v^2 + w^2
+
+        roll  = (iy - iz) * q * r + ixz * p * q             &
+              + rho * vel_sq * s_ref * b_span * cl / 2
+        pitch = (iz - ix) * r * p + ixz * (r ** 2 - p ** 2) &
+              + rho * vel_sq * s_ref * mac * cm / 2
+        yaw   = (ix - iy) * p * q - ixz * q * r             &
+              + rho * vel_sq * s_ref * b_span * cn / 2
+
+        rvs = rho * vel_sq * s_ref / (2 * m_body)
+
+        fu = -q * w + r * v - grav * sin(tht)            + rvs * cx
+        fv = -r * u + p * w + grav * cos(tht) * sin(phi) + rvs * cy
+        fw = -p * v + q * u + grav * cos(tht) * cos(phi) + rvs * cz
+
+        fp = (roll / ix + ixz / ix * yaw / iz) / (1 - ixz ** 2 / (ix * iz))
+        fq = pitch / iy
+        fr = (yaw / iz + ixz / iz * roll / ix) / (1 - ixz ** 2 / (ix * iz))
+
+        fphi = (r * cos(phi) + q * sin(phi)) / cos(tht)
+        ftht = q * cos(phi) - r * sin(phi)
+        fpsi = p + fphi * sin(tht)
+
+        K = [fu, fv, fw, fp, fq, fr, fphi, ftht, fpsi]
+    end subroutine func
+
+
+    subroutine calc_motion(ac_in, ac_out)
+        type(aircraft), intent(in) :: ac_in
+        type(aircraft), intent(out) :: ac_out
+        real(8) :: X(9), X_next(9)
+
+        X = [ac_in%u, ac_in%v, ac_in%w, ac_in%p, ac_in%q, ac_in%r, &
+             ac_in%phi, ac_in%tht, ac_in%psi]
+
+        call runge_kutta(func, X, X_next, dt, 4)
+
+        ac_out%u = X_next(1)
+        ac_out%v = X_next(2)
+        ac_out%w = X_next(3)
+        ac_out%p = X_next(4)
+        ac_out%q = X_next(5)
+        ac_out%r = X_next(6)
+        ac_out%phi = X_next(7)
+        ac_out%tht = X_next(8)
+        ac_out%psi = X_next(9)
+
+        call ac_out%set_state
+
+        ac_out%x = ac_in%x + ac_out%u_earth * dt
+        ac_out%y = ac_in%y + ac_out%v_earth * dt
+        ac_out%z = ac_in%z + ac_out%w_earth * dt
+    end subroutine calc_motion
+
+end module mod_aircraft
 
 
 module dof
     use iso_c_binding
     use global
-    use flight
-    use rk4
+    use mod_aircraft
     use dof_kriging
     implicit none
 
@@ -317,9 +256,7 @@ module dof
         read(unit, *) mac
         read(unit, *) b_span
         read(unit, *) ix, iy, iz
-        read(unit, *) ixy, ixz
-        read(unit, *) iyz
-        read(unit, *) dt
+        read(unit, *) ixy, ixz, iyz
         close(unit)
 
         open(newunit=unit, file='input.txt', status="old")
@@ -335,13 +272,6 @@ module dof
         phi_start = radians * phi_start
         tht_start = radians * tht_start
         psi_start = radians * psi_start
-
-        ! ix = ix / radians ** 2
-        ! iy = iy / radians ** 2
-        ! iz = iz / radians ** 2
-        ! ixy = ixy / radians ** 2
-        ! ixz = ixz / radians ** 2
-        ! iyz = iyz / radians ** 2
     end subroutine read_input
 
 
@@ -357,29 +287,12 @@ module dof
         ac%q = q_start
         ac%r = r_start
         ac%phi = phi_start
-        ac%theta = tht_start
+        ac%tht = tht_start
         ac%psi = psi_start
         ac%elevator = 0
 
         call ac%set_state
     end subroutine init_aircraft
-
-
-    subroutine calc_motion(ac_in, ac_out)
-        type(aircraft), intent(in) :: ac_in
-        type(aircraft), intent(out) :: ac_out
-
-        call rk4(ac_in%u, ac_in%v, ac_in%w, ac_in%p, ac_in%q, ac_in%r, &
-                 ac_in%phi, ac_in%theta, ac_in%psi, &
-                 ac_out%u, ac_out%v, ac_out%w, ac_out%p, ac_out%q, ac_out%r, &
-                 ac_out%phi, ac_out%theta, ac_out%psi)
-
-        call ac_out%set_state
-
-        ac_out%x = ac_in%x + ac_out%u_earth * dt
-        ac_out%y = ac_in%y + ac_out%v_earth * dt
-        ac_out%z = ac_in%z + ac_out%w_earth * dt
-    end subroutine calc_motion
 
 
     ! ======================================================
@@ -423,7 +336,7 @@ module dof
         ! output(3, 1) = ac(1)%u
         ! output(4, 1) = ac(1)%mach_number
         ! output(5, 1) = ac(1)%angle_of_attack
-        ! output(6, 1) = ac(1)%theta * degrees
+        ! output(6, 1) = ac(1)%tht * degrees
 
         do i = 1, n
             ac(i)%elevator = elevator_in(i)
@@ -437,7 +350,7 @@ module dof
             mach_number = min(max(mach_number, 0.1d0), 0.5d0)
 
             cx = estimate(1, angle_of_attack, elevator, mach_number)
-            cm = estimate(2, angle_of_attack, elevator, mach_number) * 0.01
+            cm = estimate(2, angle_of_attack, elevator, mach_number)
             cz = estimate(3, angle_of_attack, elevator, mach_number)
 
             ac(i)%cx = cx
@@ -453,8 +366,8 @@ module dof
             output(1, i) = ac(i)%x
             output(2, i) = ac(i)%z
             output(3, i) = ac(i)%u_earth
-            output(4, i) = ac(i)%w
-            output(5, i) = ac(i)%mach_number
+            output(4, i) = ac(i)%w_earth
+            output(5, i) = ac(i)%tht * degrees
             output(6, i) = ac(i)%angle_of_attack
         end do
     end subroutine calc
