@@ -7,8 +7,8 @@ module mod_kriging
     public kriging
 
     type :: kriging
-        real(8), allocatable :: variables(:, :) ! 設計変数(変数番号, 個体番号)
-        real(8), allocatable :: objectives(:)   ! 目的関数(個体番号)
+        real(8), allocatable :: var(:, :)       ! 設計変数(変数番号, 個体番号)
+        real(8), allocatable :: obj(:)          ! 目的関数(個体番号)
         real(8), allocatable :: theta(:)        ! 重み係数θ(変数番号)
 
         real(8), allocatable :: r_mat(:, :)     ! 相関行列R(個体番号, 個体番号)
@@ -23,22 +23,20 @@ module mod_kriging
         real(8) :: sigma                        ! 分散σ^2
         real(8) :: ln                           ! 尤度Ln
 
-        real(8), allocatable :: var_org(:, :)
-        real(8), allocatable :: bounds(2, :), scale(:)
+        real(8), allocatable :: var_in(:, :)
+        real(8), allocatable :: bounds(:, :), scale(:)
         logical :: feasible = .false.
-        ! logical :: ready = .false.
 
         contains
 
-        generic :: initialize => initialize_krig
         generic :: set_bounds => set_bounds1, set_bounds2
-        generic :: set_scale => set_scale1, set_scale2
-
-        procedure :: initialize_krig
         procedure :: set_bounds1, set_bounds2
+
+        generic :: set_scale => set_scale1, set_scale2
         procedure :: set_scale1, set_scale2
+
+        procedure :: initialize
         procedure :: set_theta
-        procedure :: call_func_so_con
         procedure :: calc_likelihood
         procedure :: estimate
         procedure :: enc, dec
@@ -48,22 +46,27 @@ module mod_kriging
         final :: destroy_instance
     end type kriging
 
-    real(8), parameter :: PI  = 4 * atan(1d0)
+    ! 定数
+    ! real(8), parameter :: PI  = 4 * atan(1d0)
 
     contains
 
-    subroutine initialize_krig(this, variables, objectives)
+
+    ! ==========================================================================
+    ! 初期化 (設計変数, 目的関数設定)
+    ! ==========================================================================
+    subroutine initialize(this, var, obj)
         class(kriging), intent(inout) :: this
-        real(8), intent(in) :: variables(:, :), objectives(:)
+        real(8), intent(in) :: var(:, :), obj(:)
 
         call destroy_instance(this)
 
-        this%n_var = size(variables, dim=1)
-        this%n_samples = size(variables, dim=2)
+        this%n_var = size(var, dim=1)
+        this%n_samples = size(var, dim=2)
 
-        this%var_org = variables
-        this%variables = variables
-        this%objectives = objectives
+        this%var_in = var
+        this%var = var
+        this%obj = obj
 
         allocate(this%r_mat(this%n_samples, this%n_samples))
         allocate(this%r_inv(this%n_samples, this%n_samples))
@@ -72,16 +75,17 @@ module mod_kriging
 
         call this%set_bounds
         this%feasible = .false.
-    end subroutine initialize_krig
+    end subroutine initialize
 
-    ! ============================================================================
 
+    ! ==========================================================================
+    ! 設計範囲設定
+    ! ==========================================================================
     subroutine set_bounds1(this)
         implicit none
         class(kriging), intent(inout) :: this
 
-        this%low_bounds = filled(this%n_var, 0d0)
-        this%upp_bounds = filled(this%n_var, 1d0)
+        call this%set_bounds(spread([0d0, 1d0], 2, this%n_var))
     end subroutine set_bounds1
 
     subroutine set_bounds2(this, bounds)
@@ -90,19 +94,28 @@ module mod_kriging
         real(8), intent(in) :: bounds(:, :)
         integer :: i
 
+        if (size(bounds, dim=1) /= 2) then
+            print *, "設計範囲が不正です"
+            call exit(1)
+        end if
+
         this%bounds = bounds
 
         do i = 1, this%n_samples
-            this%variables(:, i) = this%enc(this%var_org(:, i))
+            this%var(:, i) = this%enc(this%var_in(:, i))
         end do
     end subroutine set_bounds2
 
+
+    ! ==========================================================================
+    ! スケール設定
+    ! ==========================================================================
     subroutine set_scale1(this, scale)
         implicit none
         class(kriging), intent(inout) :: this
         real(8), intent(in) :: scale
 
-        this%scale = filled(this%n_var, scale)
+        this%scale = spread(scale, 1, this%n_var)
     end subroutine set_scale1
 
     subroutine set_scale2(this, scale)
@@ -113,6 +126,10 @@ module mod_kriging
         this%scale = scale
     end subroutine set_scale2
 
+
+    ! ==========================================================================
+    ! 重み係数θ設定
+    ! ==========================================================================
     subroutine set_theta(this, theta)
         implicit none
         class(kriging), intent(inout) :: this
@@ -123,50 +140,14 @@ module mod_kriging
     end subroutine set_theta
 
 
-    ! ============================================================================
-    ! target functions for optimization (minimize)
-    ! ============================================================================
-
-    ! subroutine call_func_so(this, variables, objective)
-    !   implicit none
-    !   class(kriging) :: this
-    !   real(8), intent(in) :: variables(:)
-    !   real(8), intent(out) :: objective
-
-    !   this%theta = variables * this%scale
-    !   call this%calc_likelihood
-    !   objective = -this%ln
-    ! end subroutine call_func_so
-
-    subroutine call_func_so_con(this, variables, objective, feasible)
-        implicit none
-        class(kriging), intent(inout) :: this
-        real(8), intent(in) :: variables(:)
-        real(8), intent(out) :: objective
-        logical, intent(out) :: feasible
-
-        call this%calc_likelihood(variables)
-
-        feasible = this%feasible
-        ! if (feasible) then
-        !   objective = 1d0 / (1d0 + 0.01d0 * this%ln)
-        ! else
-        !   objective = 1d0
-        ! end if
-        objective = -this%ln
-        ! if (feasible) then
-        !   objective = this%error()
-        ! else
-        !   objective = 1d0
-        ! end if
-    end subroutine call_func_so_con
-
-    ! ============================================================================
-
-    subroutine calc_likelihood(this, theta)
+    ! ==========================================================================
+    ! 尤度計算
+    ! ==========================================================================
+    subroutine calc_likelihood(this, theta, show)
         implicit none
         class(kriging), intent(inout) :: this
         real(8), intent(in), optional :: theta(:)
+        logical, intent(in), optional :: show
         character(:), allocatable :: format
         logical :: flag
         integer :: i, j
@@ -174,42 +155,44 @@ module mod_kriging
         if (present(theta)) call this%set_theta(theta)
 
         do i = 1, this%n_samples
-            this%r_mat(i:, i) = [1d0, (corr(this%theta, this%variables(:, i),  &
-                                                                                                    this%variables(:, j)), &
-                                                                 j = i + 1, this%n_samples)]
+            this%r_mat(i:, i) = [1d0, (corr(this%theta, this%var(:, i), &
+                                            this%var(:, j)),            &
+                                       j = i + 1, this%n_samples)]
         end do
-        ! call copy_l2u(this%r_mat)
 
-        ! this%r_inv = inverse_with_logdet(this%r_mat, this%r_det, flag)
         this%r_inv = sym_inverse_with_logdet(this%r_mat, this%r_det, flag)
 
         if (flag) then
             print "(a)", "Ln: infeasible (singular matrix)"
-            this%ln = -1e30
+            this%ln = NaN
             this%feasible = .false.
             return
         end if
 
         call copy_l2u(this%r_inv)
-        this%mu = dot_product(sum(this%r_inv, dim=1), this%objectives) &
+        this%mu = dot_product(sum(this%r_inv, dim=1), this%obj) &
                             / sum(this%r_inv)
-        this%dev_obj = this%objectives - this%mu
+        this%dev_obj = this%obj - this%mu
         this%dev_mul = blas_sym_matmul(this%r_inv, this%dev_obj)
         this%sigma = dot_product(this%dev_obj, this%dev_mul) / this%n_samples
 
         if (this%sigma <= 0d0 .or. this%sigma > 10d0) then
             print "(a)", "Ln: infeasible (sigma <= 0)"
-            this%ln = -1e30
+            this%ln = NaN
             this%feasible = .false.
             return
         end if
 
         this%ln = -0.5d0 * (this%n_samples * log(this%sigma) + this%r_det)
         this%feasible = .true.
-        format = "('theta='" // str(this%n_var) // &
-                         "f8.3' Ln='f8.2' det='f8.2' mu='es9.3e1' sig='es9.3e1)"
-        print format, this%theta, this%ln, this%r_det, this%mu, this%sigma
+
+        if (present(show)) then
+            format = "('theta='" // str(this%n_var) // &
+                     "f8.3' Ln='f8.2' det='f8.2' mu='es9.3e1' sig='es9.3e1)"
+            print format, this%theta, this%ln, this%r_det, this%mu, this%sigma
+        end if
     end subroutine calc_likelihood
+
 
     real(8) function estimate(this, x) result(res)
         implicit none
@@ -225,13 +208,13 @@ module mod_kriging
             call exit(1)
         end if
 
-        r_new = [(corr(this%theta, this%enc(x), this%variables(:, i)), &
+        r_new = [(corr(this%theta, this%enc(x), this%var(:, i)), &
                          i = 1, this%n_samples)]
         res = this%mu + dot_product(r_new, this%dev_mul)
 
         ! rmse = sqrt(sigma * (1d0 - dot_product(matmul(r_new, r_inv), r_new) &
         !        + (1d0 - dot_product(sum(r_inv, 1), r_new)) ** 2 / sum(r_inv)))
-        ! xi = (minval(objectives) - res) / rmse
+        ! xi = (minval(obj) - res) / rmse
         ! phi = 0.5d0 * erfc(-xi / sqrt(2d0))
         ! chi = 1d0 / sqrt(2d0 * PI) * exp(-0.5d0 * xi ** 2)
         ! ei = rmse * (xi * phi + chi)
@@ -245,26 +228,32 @@ module mod_kriging
     end function estimate
 
 
-    ! ============================================================================
-
+    ! ==========================================================================
+    ! 正規化
+    ! ==========================================================================
     function enc(this, x) result(res)
         implicit none
         class(kriging), intent(in) :: this
         real(8), intent(in)  :: x(:)
         real(8), allocatable :: bounds_range(:), res(:)
 
-        bounds_range = this%bounds(2, :) - this%bounds(1, :)
+        allocate(bounds_range(this%n_var), &
+                 source=this%bounds(2, :) - this%bounds(1, :))
         where (bounds_range == 0) bounds_range = 1
         res = (x - this%bounds(1, :)) / bounds_range
     end function enc
 
+
+    ! ==========================================================================
+    ! 逆正規化
+    ! ==========================================================================
     function dec(this, x) result(res)
         implicit none
         class(kriging), intent(in) :: this
         real(8), intent(in)  :: x(:)
         real(8), allocatable :: res(:)
 
-        res = x * (this%upp_bounds - this%low_bounds) + this%low_bounds
+        res = (this%bounds(2, :) - this%bounds(1, :)) * x + this%bounds(1, :)
     end function dec
 
     ! subroutine estimate(x, new_obj, ei)
@@ -274,13 +263,13 @@ module mod_kriging
     !   real(8), allocatable :: r_newvar(:)
     !   integer :: i
 
-    !   r_newvar = [(corr(x, variables(:, i)), i = 1, n_samples)]
+    !   r_newvar = [(corr(x, var(:, i)), i = 1, n_samples)]
 
     !   new_obj = mu + dot_product(matmul(r_newvar, r_inv), dev_obj)
 
     !   rmse = sqrt(sigma * (1d0 - dot_product(matmul(r_newvar, r_inv), r_newvar) &
     !          + (1d0 - dot_product(sum(r_inv, 1), r_newvar)) ** 2 / sum(r_inv)))
-    !   xi = (minval(objectives) - new_obj) / rmse
+    !   xi = (minval(obj) - new_obj) / rmse
     !   phi = 0.5d0 * erfc(-xi / sqrt(2d0))
     !   chi = 1d0 / sqrt(2d0 * PI) * exp(-0.5d0 * xi ** 2)
     !   ei = rmse * (xi * phi + chi)
@@ -294,16 +283,16 @@ module mod_kriging
     ! end subroutine estimate
 
 
-    ! ============================================================================
+    ! ==========================================================================
     ! inspection
-    ! ============================================================================
+    ! ==========================================================================
 
     real(8) function error(this)
         implicit none
         class(kriging), intent(inout) :: this
         integer :: i
 
-        error = sum([((this%estimate(this%var_org(:, i)) - this%objectives(i)) ** 2, &
+        error = sum([((this%estimate(this%var_in(:, i)) - this%obj(i)) ** 2, &
                                     i = 1, this%n_samples)])
     end function error
 
@@ -314,10 +303,10 @@ module mod_kriging
         integer :: i
 
         err_total = 0d0
-        range = maxval(this%objectives) - minval(this%objectives)
+        range = maxval(this%obj) - minval(this%obj)
         do i = 1, this%n_samples
-            obj = this%objectives(i)
-            est = this%estimate(this%var_org(:, i))
+            obj = this%obj(i)
+            est = this%estimate(this%var_in(:, i))
             err = est - obj
             err_total(1) = err_total(1) + abs(err)
             err_total(2) = err_total(2) + err ** 2
@@ -352,32 +341,30 @@ module mod_kriging
     end subroutine show
 
 
-    ! ============================================================================
+    ! ==========================================================================
     ! destructor
-    ! ============================================================================
+    ! ==========================================================================
 
     subroutine destroy_instance(this)
         implicit none
         type(kriging), intent(inout) :: this
 
-        if (allocated(this%variables)) deallocate(this%variables)
-        if (allocated(this%objectives)) deallocate(this%objectives)
+        if (allocated(this%var)) deallocate(this%var)
+        if (allocated(this%obj)) deallocate(this%obj)
         if (allocated(this%theta)) deallocate(this%theta)
         if (allocated(this%r_mat)) deallocate(this%r_mat)
         if (allocated(this%r_inv)) deallocate(this%r_inv)
         if (allocated(this%dev_obj)) deallocate(this%dev_obj)
         if (allocated(this%dev_mul)) deallocate(this%dev_mul)
-        if (allocated(this%var_org)) deallocate(this%var_org)
-        if (allocated(this%low_bounds)) deallocate(this%low_bounds)
-        if (allocated(this%upp_bounds)) deallocate(this%upp_bounds)
+        if (allocated(this%var_in)) deallocate(this%var_in)
+        if (allocated(this%bounds)) deallocate(this%bounds)
         if (allocated(this%scale)) deallocate(this%scale)
     end subroutine destroy_instance
 
 
-    ! ============================================================================
-    ! auxiliary functions
-    ! ============================================================================
-
+    ! ==========================================================================
+    ! 相関関数
+    ! ==========================================================================
     real(8) function corr(theta, x1, x2)
         implicit none
         real(8), intent(in) :: theta(:), x1(:), x2(:)
