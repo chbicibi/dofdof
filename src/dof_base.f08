@@ -79,7 +79,7 @@ module mod_calculation
             C = [1, 2, 2, 1]
         case default         ! それ以外はエラー (必要に応じて追加可能)
             print *, "Error: Invalid DEGREES of the Runge–Kutta method."
-            call exit(1)
+            stop 1
         end select
 
         m = size(X) ! 求めたい変数の数を代入
@@ -148,6 +148,10 @@ module mod_aircraft
         ! 2020.06.16追加
         real(8) :: forth                     !　分離力
         real(8) :: moment                    !　分離モーメント
+
+
+        ! 2020.9.14追加
+        integer :: status          ! 0=>飛行中, 1=>着陸, <=3=>エラー
 
         contains
 
@@ -402,7 +406,7 @@ module mod_aircraft
 
     subroutine print_state(this)
         class(aircraft), intent(in) :: this
-        print "(1(a9,es12.3))", "t:", this%t
+        print "(a9,es12.3,a9,i12)", "t:", this%t, "status:", this%status
         print "(3(a9,es12.3))", "x:", this%x, "y:", this%y, "z:", this%z
         print "(3(a9,es12.3))", "u:", this%u, "v:", this%v, "w:", this%w
         print "(3(a9,es12.3))", "p:", this%p, "q:", this%q, "r:", this%r

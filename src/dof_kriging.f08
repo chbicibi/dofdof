@@ -1,4 +1,4 @@
-module dof_kriging
+module mod_kriging
     use util
     use individual
     use kriging
@@ -173,4 +173,4 @@ module dof_kriging
         res = model(model_no)%estimate(params(:))
     end function estimate
 
-end module dof_kriging
+end module mod_kriging

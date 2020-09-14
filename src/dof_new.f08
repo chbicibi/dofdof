@@ -1,240 +1,19 @@
 !===============================================================================
 ! 最適化モジュール
 !===============================================================================
-module dof_flight
-    use global
-    use mod_aircraft
-    use dof_kriging
-    implicit none
-
-    private
-    public :: read_input, init_aircraft, flight, output_path
-
-    real(8) :: x_start, y_start, z_start
-    real(8) :: u_start, v_start, w_start
-    real(8) :: p_start, q_start, r_start
-    real(8) :: phi_start, tht_start, psi_start
-
-    contains
-
-    ! ==========================================================================
-    ! 初期化
-    ! ==========================================================================
-
-    ! [入力ファイル読み込み用サブルーチン]
-    ! 入力ファイルの書式を変更する場合はここを書き換えてください
-    subroutine read_input(file_conditions, file_input)
-        character(*), intent(in) :: file_conditions, file_input
-        integer :: unit
-
-        ! 計算条件定義ファイル
-        open(newunit=unit, file=file_conditions, status="old")
-        read(unit, *) grav
-        read(unit, *) rho
-        read(unit, *) speed_of_sound
-        read(unit, *) m_body
-        read(unit, *) s_ref
-        read(unit, *) mac
-        read(unit, *) b_span
-        read(unit, *) ix, iy, iz
-        read(unit, *) ixy, ixz, iyz
-        close(unit)
-
-        ! 初期条件定義ファイル
-        open(newunit=unit, file=file_input, status="old")
-        read(unit, *) x_start, y_start, z_start
-        read(unit, *) u_start, v_start, w_start
-        read(unit, *) p_start, q_start, r_start
-        read(unit, *) phi_start, tht_start, psi_start
-        close(unit)
-
-        ! 単位をラジアンに変更
-        ! [メモ] 2019.6.17
-        ! このプログラムでは角度の単位をラジアンで管理しています (舵角を除く)
-        ! 必要に応じて入出力時に変換してください
-        p_start = RADIANS * p_start
-        q_start = RADIANS * q_start
-        r_start = RADIANS * r_start
-        phi_start = RADIANS * phi_start
-        tht_start = RADIANS * tht_start
-        psi_start = RADIANS * psi_start
-    end subroutine read_input
-
-
-    ! 機体の状態を初期化
-    subroutine init_aircraft(ac, number)
-        type(aircraft), intent(inout) :: ac
-        character(1), intent(in) :: number
-        character(:), allocatable :: file_conditions, file_input
-
-        file_conditions = 'conditions' // number // '.txt'
-        file_input = 'input' // number // '.txt'
-        call read_input(file_conditions, file_input)
-
-        ac%x = x_start
-        ac%y = y_start
-        ac%z = z_start
-        ac%u = u_start
-        ac%v = v_start
-        ac%w = w_start
-        ac%p = p_start
-        ac%q = q_start
-        ac%r = r_start
-        ac%phi = phi_start
-        ac%tht = tht_start
-        ac%psi = psi_start
-        ac%elevator = 0
-        ac%thrust = 0
-        ac%ang_thrust = 0
-        ac%calculated = 1
-
-        ac%s_ref = s_ref
-        ac%m_body = m_body
-        ac%mac = mac
-        ac%b_span = b_span
-        ac%ix = ix
-        ac%iy = iy
-        ac%iz = iz
-        ac%ixy = ixy
-        ac%ixz = ixz
-        ac%iyz = iyz
-
-        ! 2020.06.16
-        ! forth = ac%fotrh
-        ac%forth = 0
-        ac%moment = 0
-
-        call ac%set_state
-    end subroutine init_aircraft
-
-
-    ! 軌道計算サブルーチン
-    subroutine flight(acs, n_last, exit_status)
-        type(aircraft), intent(inout) :: acs(:)
-        integer, intent(out) :: n_last, exit_status
-        integer :: total_steps, i
-
-        total_steps = size(acs)
-
-        do i = 1, total_steps - 1
-            acs(i)%t = dt * (i - 1)
-            ! if (i > 1) then
-            !     acs(i)%elevator = acs(i-1)%elevator
-            !     acs(i)%thrust = acs(i-1)%thrust
-            !     acs(i)%ang_thrust = acs(i-1)%ang_thrust
-            ! end if
-
-            associate (param => [acs(i)%angle_of_attack, &
-                                 acs(i)%elevator,        &
-                                 acs(i)%mach_number])
-                acs(i)%cx = estimate(1, param)
-                acs(i)%cm = estimate(2, param)
-                acs(i)%cz = estimate(3, param)
-            end associate
-
-            call calc_motion(acs(i), acs(i+1))
-
-            n_last = i
-            if (check_stop(acs(i+1), exit_status)) exit
-
-            ! if (mod(i, 1000) == 0) print *, i, "step calculating..."
-        end do
-    end subroutine flight
-
-
-    ! 計算条件の確認
-    logical function check_stop(ac, exit_status) result(is_stop)
-        type(aircraft), intent(inout) :: ac
-        integer, intent(out) :: exit_status
-
-        if (ac%z <= 0) then
-            is_stop = .true.
-            exit_status = 1
-
-        else if (ac%angle_of_attack < 0 .or. ac%angle_of_attack > 20) then
-            ! print "(a,f0.1,a)", 'Error: "Angle of Attack" is out of range! (', ac%t, "s)"
-            is_stop = .true.
-            exit_status = 2
-
-        else if (ac%mach_number < 0.1d0 .or. ac%mach_number > 0.5d0) then
-            ! print "(a,f0.1,a)", 'Error: "Mach Number" is out of range! (', ac%t, "s)"
-            is_stop = .true.
-            exit_status = 3
-
-        else if (ac%elevator < -50 .or. ac%elevator > 30) then
-            ! print "(a,f0.1,a)", 'Error: "Elevator" is out of range! (', ac%t, "s)"
-            is_stop = .true.
-            exit_status = 4
-
-        else
-            is_stop = .false.
-            exit_status = 0
-        end if
-    end function check_stop
-
-
-    ! 飛行経路をファイルに出力する (csv形式)
-    subroutine output_path(ac, start, end, step, file)
-        type(aircraft), intent(in) :: ac(:)
-        integer, intent(in) :: start, end, step
-        character(*), intent(in) :: file
-
-        character(:), allocatable :: format
-        integer :: unit, i, n
-
-        format = "(20(es15.8',')i0)" ! カンマ区切り
-
-        if (start <= 1) then
-            open(newunit=unit, file=file, status='replace')
-            write(unit, "(a)") "time,theta,alpha,gamt,elv,ma,x,z,ue,we,uu,ww,q,cx,cm,cz,thrust,ang_thrust,forth,moment,calculated"
-        else
-            open(newunit=unit, file=file, position='append')
-        end if
-
-        do i = start, size(ac), step
-
-            if (i == 0) then
-                if (step > 1) then
-                    n = 1
-                else
-                    cycle
-                end if
-            else
-                n = i
-            end if
-
-            if (end > 0 .and. n > end) exit
-            if (ac(n)%calculated == 0) cycle
-
-            ! forth, momentは i = 1 の値を書き出している
-            write(unit, format) ac(n)%t, ac(n)%tht, ac(n)%angle_of_attack, ac(n)%gamt, ac(n)%elevator, &
-                ac(n)%mach_number, ac(n)%x, ac(n)%z, ac(n)%u_earth, ac(n)%w_earth, &
-                ac(n)%u, ac(n)%w, ac(n)%q, ac(n)%cx, ac(n)%cm, ac(n)%cz, ac(n)%thrust, ac(n)%ang_thrust, &
-                ac(1)%forth, ac(1)%moment, ac(n)%calculated
-        end do
-
-        close(unit)
-    end subroutine output_path
-
-end module dof_flight
-
-
-!===============================================================================
-! 最適化モジュール
-!===============================================================================
-module dof_ga
+module mod_ga
     use util, only: str
-    use global
+    use mod_kriging, only: init_krig, estimate
     use individual, only: TIndiv
-    use dof_kriging, only: init_krig, estimate
     use soga, only: TSOGA, TPopulation
     use nsga2c, only: TNSGA2C
+    use global
     use mod_aircraft
-    use dof_flight
+    use mod_flight
     implicit none
 
     private
-    public :: optimizer, workspace2d, init_ga, optimize, save_result
+    public :: optimizer, workspace2d, init_ga, optimize
     public :: n_var_elv, n_var_thrust
 
 
@@ -256,7 +35,7 @@ module dof_ga
 
     ! 設計変数を定義
     real(8) :: elv_lower = -50.0     ! 舵角入力下限値 (度)
-    real(8) :: elv_upper = 30.0      ! 舵角入力上限値 (度)
+    real(8) :: elv_upper = 10.0      ! 舵角入力上限値 (度)
     real(8) :: elv_bound = 2.0       ! 舵角入力変化量最大値 (度/秒)
     real(8) :: elv_start  = -25.9136143        ! 舵角入力初期値 (度/秒)
     integer :: n_var_elv = 400
@@ -264,8 +43,11 @@ module dof_ga
     real(8) :: thrust_lower =  -140000 ! 推力入力下限値 (N)
     real(8) :: thrust_upper =  140000 ! 推力入力上限値 (N)
     real(8) :: thrust_bound =  1000   ! 推力入力変化量最大値 (N/秒)
-    real(8) :: thrust_start  =  17719.3379    ! 推力入力初期値 (N)
+    ! real(8) :: thrust_start  =  17719.3379    ! 推力入力初期値 (N)
+    real(8) :: thrust_start  =  0    ! 推力入力初期値 (N)
     integer :: n_var_thrust = 400
+
+    integer :: n_obj_ref
 
 
     ! ! 吉田追加
@@ -291,7 +73,17 @@ module dof_ga
     subroutine evaluate_pop_para(this, population)
         class(TOpt), intent(inout) :: this
         type(TPopulation), intent(inout) :: population(:)
-        integer :: i
+        integer :: n, i!, unit
+
+        n = this%current_step
+
+        ! do while (access("pause", " ") == 0)
+        !     call sleep(1)
+        ! end do
+
+        ! open(newunit=unit, file="progress.txt", status="replace")
+        ! write(unit, "(i0)") n
+        ! close(unit)
 
         !$omp parallel
         !$omp do
@@ -318,7 +110,7 @@ module dof_ga
                              indiv%objectives,  &
                              indiv%constraints, &
                              indiv%feasible,    &
-                             idx, indiv%id)
+                             idx)
             indiv%evaluated = .true.
         end subroutine evaluate_indiv
 
@@ -330,20 +122,18 @@ module dof_ga
     ! #######################################################################
 
     ! GAの初期化
-    subroutine init_ga(n_var, n_obj, pop_size)
+    subroutine init_ga(n_var, n_obj, pop_size, xover)
         integer, intent(in) :: n_var, n_obj, pop_size
+        character(*), intent(in) :: xover
 
         call optimizer%initialize(nx=n_var,        &
                                   m=n_obj,         &
                                   N=pop_size,      &
                                   selection="T",   &
-                                  crossover="BLX", &
+                                  crossover=xover, &
                                   mutation="PM")
 
-        ! call optimizer%set_fitness_type("VALUE")
-        optimizer%elite_preservation = .false.
-        optimizer%sharing = .true.
-        optimizer%history_preservation = .true.
+        n_obj_ref = n_obj
     end subroutine init_ga
 
 
@@ -361,42 +151,108 @@ module dof_ga
 
         subroutine hook(ga)
             class(TSOGA), intent(inout) :: ga
-            character(:), allocatable :: filename
-            integer :: n
+            character(:), allocatable :: filename!, dirname
+            integer :: n, m
 
             n = ga%current_step
+            m = 10 ** max(int(log10(dble(max(n, 1))))-1, 0)
 
-            if (n == n_gen .or. mod(n, 100) == 0) then
+            if (n == n_gen .or. mod(n, m) == 0) then
                 filename = "result/out_" // str(ga%current_step, 5) // ".csv"
+                ! [saving current population]
+                call system("if not exist result mkdir result")
                 call ga%save_result(filename)
-            end if
 
-            if (n == n_gen .or. mod(n, 100) == 0) then
+                ! [saving history]
+                ! call system("if not exist result mkdir result")
                 call ga%save_history("result/history.csv")
+
+                ! [saving path]
+                if (mod(n, 100) == 0) call save_flight(ga)
+
+                ! dirname = "path/gen_" // str(ga%current_step)
+                ! call system('if not exist "' // dirname // '" mkdir "' // dirname // '"')
+                ! do i = 1, size(ga%population)
+                ! block
+                !     associate (acs => workspace2d(:, i),    &
+                !                variables => indiv(i)%dvariables, &
+                !                id => indiv(i)%id)
+                !     class(TIndiv), allocatable :: indiv(:)
+                !     allocate(indiv(size(ga%population)), source=ga%population%indiv)
+                    ! do i = 1, size(indiv)
+                    !     indiv(i) = ga%population(i)%indiv
+                    ! end do
+                    ! call save_flight(indiv, i, dirname)
+                ! end block
+                ! end do
             end if
         end subroutine hook
     end subroutine optimize
 
 
+    subroutine save_flight(ga)
+        class(TSOGA), intent(in) :: ga
+        character(:), allocatable :: dirname
+        integer :: i
+        ! [saving path]
+        dirname = "path/gen_" // str(ga%current_step)
+        call system('if not exist "' // dirname // '" mkdir "' // dirname // '"')
+
+        !$omp parallel
+        !$omp do
+        do i = 1, size(ga%population)
+            call save_flight_inner(ga%population(i)%indiv, i)
+        end do
+        !$omp end do
+        !$omp end parallel
+
+        contains
+
+        subroutine save_flight_inner(indiv, idx)
+            class(TIndiv), intent(in) :: indiv
+            integer, intent(in) :: idx
+            ! character(*), intent(in) :: dirname
+            character(:), allocatable :: filename
+            integer :: n_last, end_status
+
+            associate (acs => workspace2d(:, idx),    &
+                       variables => indiv%dvariables, &
+                       id => indiv%id)
+                filename = dirname // "/flight_" // str(idx, 4) // "_id=" // str(id) // ".csv"
+
+                acs(2:)%calculated = 0
+                call set_elevator(acs, variables(1:n_var_elv))
+                call set_thrust(acs, variables(n_var_elv+1:n_var_elv+n_var_thrust))
+                call flight(acs, n_last, end_status)
+
+                !$omp single
+                call output_path(acs, start=1, end=-1, step=50, file=filename)
+                !$omp end single
+            end associate
+        end subroutine save_flight_inner
+
+    end subroutine save_flight
+
+
     ! GA結果ファイル出力
-    subroutine save_result
+    ! subroutine save_result
 
-        ! 制約出力なし(仮)
-        call optimizer%save_result("out_so_X_1.csv", elite="only")
-        call optimizer%save_result("out_so_X_2.csv", elite="all")
-        call optimizer%save_history("out_so_X_3.csv", elite="only")
-        call optimizer%save_history("out_so_X_4.csv", elite="all")
-        call optimizer%save_history("out_so_X_5.csv", elite="all")
+    !     ! 制約出力なし(仮)
+    !     call optimizer%save_result("out_so_X_1.csv", elite="only")
+    !     call optimizer%save_result("out_so_X_2.csv", elite="all")
+    !     call optimizer%save_history("out_so_X_3.csv", elite="only")
+    !     call optimizer%save_history("out_so_X_4.csv", elite="all")
+    !     call optimizer%save_history("out_so_X_5.csv", elite="all")
 
-        ! call optimizer%save_result("out_so_X_1.csv", elite="only", feasible="all")
-        ! call optimizer%save_result("out_so_X_2.csv", elite="all", feasible="all")
-        ! call optimizer%save_history("out_so_X_3.csv", elite="only", feasible="all")
-        ! call optimizer%save_history("out_so_X_4.csv", elite="all", feasible="all")
-        ! call optimizer%save_history("out_so_X_5.csv", elite="all", feasible="only")
+    !     ! call optimizer%save_result("out_so_X_1.csv", elite="only", feasible="all")
+    !     ! call optimizer%save_result("out_so_X_2.csv", elite="all", feasible="all")
+    !     ! call optimizer%save_history("out_so_X_3.csv", elite="only", feasible="all")
+    !     ! call optimizer%save_history("out_so_X_4.csv", elite="all", feasible="all")
+    !     ! call optimizer%save_history("out_so_X_5.csv", elite="all", feasible="only")
 
-        ! call optimizer%save_result("test1.csv")
-        ! call optimizer%save_history("test2.csv")
-    end subroutine save_result
+    !     ! call optimizer%save_result("test1.csv")
+    !     ! call optimizer%save_history("test2.csv")
+    ! end subroutine save_result
 
 
     ! #######################################################################
@@ -404,13 +260,13 @@ module dof_ga
     ! # このサブルーチンを編集する
     ! #######################################################################
 
-    subroutine evaluate_ga(variables, objectives, constraints, feasible, idx, id)
+    subroutine evaluate_ga(variables, objectives, constraints, feasible, idx)
         real(8), intent(in) :: variables(:)
         real(8), intent(out), allocatable :: objectives(:), constraints(:)
         logical, intent(out) :: feasible
-        integer, intent(in) :: idx, id
+        integer, intent(in) :: idx
         real(8) :: ll
-        integer :: n_last, end_status, i
+        integer :: n_last, end_status
 
         ! type(aircraft), allocatable :: ac(:)
         ! real(8), allocatable :: ll(:)
@@ -422,49 +278,52 @@ module dof_ga
         ! constraints: 制約条件の配列 (出力)
         ! feasible: 個体の有効性 (出力) [.true.=>制約条件満足, .false.=>制約違反]
 
-        ! 機体の状態を初期化
-        ! do i = 1, size(ac)
-        !     call init_aircraft(ac(i))
-        ! end do
-
-        ! 設計変数をエレベータと推力に変換し，飛行経路を求める
-        ! call set_elv(variables(:n_var_elv), ac_opt)
-        ! call set_thrust(variables(n_var_elv+1:), ac_opt)
-
         associate (acs => workspace2d(:, idx))
             acs(2:)%calculated = 0
 
-            call set_elevator(acs, variables(1:n_var_elv))
+            acs(1)%elevator = elv_start + (variables(1) * 20 - 10)
+            call set_elevator(acs, variables(2:n_var_elv))
             call set_thrust(acs, variables(n_var_elv+1:n_var_elv+n_var_thrust))
 
             ! 飛行経路を求める
             call flight(acs, n_last, end_status)
-            if (mod(id, 1000) == 0) then
-                call output_path(acs, start=1, end=-1, step=50, &
-                                 file="path/flight_"//str(id)//".csv")
-            end if
+            ! if (mod(id, 1000) == 0) then
+            !     call output_path(acs, start=1, end=-1, step=50, &
+            !                      file="path/flight_"//str(id)//".csv")
+            ! end if
 
             ! 評価結果を代入
-            allocate(objectives(2))
+            allocate(objectives(n_obj_ref))
             allocate(constraints(2))
 
-            ll = 0
-            do i = 1, n_last
-                ll = ll + 2 * ((acs(i)%z - acs(1)%z) * cos(acs(1)%angle_of_attack)       &
-                             - (acs(i)%x - acs(1)%x) * sin(acs(1)%angle_of_attack)) ** 2 &
-                        + 0.04 * (acs(i)%elevator - acs(1)%elevator) ** 2
-            end do
+            associate (aoa0 => acs(1)%angle_of_attack * RADIANS, &
+                       elv0 => acs(1)%elevator)
+                ll = sum(2 * ((acs(1:n_last)%z - acs(1)%z) * cos(aoa0)       &
+                            - (acs(1:n_last)%x - acs(1)%x) * sin(aoa0)) ** 2 &
+                     + 0.04 * (acs(1:n_last)%elevator - elv0) ** 2)
+            end associate
             objectives(1) = abs(acs(n_last)%gamt) + ll * dt
-            objectives(2) = sum(acs(1:n_last)%thrust) * dt
+            ! objectives(2) = sum(acs(1:n_last)%thrust) * dt
+            ! if (size(objectives) >= 3) then
+            objectives(2) = abs(acs(n_last)%w_earth)
+            ! objectives(3) = -acs(n_last)%x
+            ! end if
 
-            constraints(1) = max(acs(n_last)%angle_of_attack - 20, &
-                                 0.0, &
-                                 -acs(n_last)%angle_of_attack)
-            constraints(2) = abs(acs(n_last)%x - 4770)
+            ! constraints(1) = max(acs(n_last)%angle_of_attack - 20, &
+            !                      0.0, &
+            !                      -acs(n_last)%angle_of_attack)
+            ! constraints(1) = (2 + acs(n_last)%w_earth) * 100
+            constraints(1) = 5 - abs(4770 - acs(n_last)%x)
+            if (end_status == 1) then
+                constraints(2) = 0
+            else
+                constraints(2) = -1e10
+            end if
 
-            feasible = end_status == 1 .and. &
-                       acs(n_last)%x > 4769.5 .and. &
-                       acs(n_last)%x < 4770.5
+            ! feasible = end_status == 1 .and. &
+            !            acs(n_last)%x > 4769.5 .and. &
+            !            acs(n_last)%x < 4770.5
+            feasible = all(constraints >= 0)
         end associate
     end subroutine evaluate_ga
 
@@ -483,7 +342,8 @@ module dof_ga
         out_size = size(acs)
         r = dble(in_size) / out_size
 
-        acs(1)%elevator = elv_start
+        ! acs(1)%elevator = elv_start
+
         do i = 2, out_size
             idx = int(r * (i - 1)) + 1
             d_elv = (2 * array(idx) - 1) * elv_bound
@@ -498,6 +358,9 @@ module dof_ga
         real(8), intent(in) :: array(:)
         real(8) :: r, d_thrust, thrust
         integer :: in_size, out_size, idx, i
+
+        acs%thrust = 0
+        return
 
         in_size = size(array)
         out_size = size(acs)
@@ -572,7 +435,7 @@ module dof_ga
     !     end do
     ! end subroutine set_thrust
 
-end module dof_ga
+end module mod_ga
 
 
 !===============================================================================
@@ -581,11 +444,11 @@ end module dof_ga
 
 program dof_main
     use util, only: elapsed_time
+    use mod_kriging
     use global
     use mod_aircraft
-    use dof_kriging
-    use dof_ga
-    use dof_flight
+    use mod_flight
+    use mod_ga
     implicit none
 
     ! integer :: is_init_krig
@@ -608,23 +471,33 @@ program dof_main
         real(8) :: flight_time
         real(8), allocatable :: best(:)
         integer :: start_time, n_control
-        integer :: n_var, n_obj, pop_size, n_gen, n_step, start, end
+        integer :: n_var, n_obj, pop_size, n_gen, n_step!, start, end
+        integer :: unit
+        character(3) :: xover
+
+
+        open(newunit=unit, file="params.txt", status="old")
+        read(unit, *) n_obj
+        read(unit, *) pop_size
+        read(unit, *) n_gen
+        read(unit, *) xover
+        close(unit)
 
         dt = 0.005         ! 時間刻み幅を設定
         flight_time = 80   ! 飛行時間
         n_control = 5      ! 操舵回数 (回/秒)
-        pop_size = 30      ! GA集団サイズ
-        n_gen = 10000      ! GA世代数
+        ! pop_size = 30      ! GA集団サイズ
+        ! n_gen = 2000      ! GA世代数
+
+        n_var_elv = int(flight_time * n_control) + 1    ! 設計変数の数 (の定義点数)
+        ! n_var_thrust = int(flight_time * n_control) ! 設計変数の数 (推力の定義点数)
+        n_var_thrust = 0 ! 設計変数の数 (推力の定義点数)
+        n_var = n_var_elv + n_var_thrust ! 設計変数の数 (舵角と推力の定義点数)
+        ! n_obj = 3                        ! 目的関数の数
 
         n_step = int(flight_time / dt) ! 計算ステップ数
-        ! n_var_elv = flight_time * n_control    ! 設計変数の数 (の定義点数)
-        ! n_var_thrust = flight_time * n_control ! 設計変数の数 (推力の定義点数)
-
-        n_var = n_var_elv + n_var_thrust ! 設計変数の数 (舵角と推力の定義点数)
-        n_obj = 2                        ! 目的関数の数
-
-        start = 1    ! 最適化開始ステップ数
-        end = n_step ! 最適化終了ステップ数
+        ! start = 1    ! 最適化開始ステップ数
+        ! end = n_step ! 最適化終了ステップ数
 
 
         ! 初期化
@@ -636,7 +509,7 @@ program dof_main
         ! end block
         workspace2d(1, 2:) = workspace2d(1, 1)
 
-        call init_ga(n_var, n_obj, pop_size)
+        call init_ga(n_var, n_obj, pop_size, xover)
 
         ! 計算時間計測開始
         call system_clock(start_time)
@@ -646,6 +519,10 @@ program dof_main
 
         ! 計算時間を表示
         call elapsed_time(start_time)
+
+        ! open(newunit=unit, file="progress.txt", status="replace")
+        ! write(unit, "(i0)") -1
+        ! close(unit)
 
         ! call save_result
 
@@ -661,6 +538,5 @@ program dof_main
         ! call output_path(ac1_opt, start=0, end=-1, step=50, file="path1.csv")
         ! call output_path(ac2_opt, start=0, end=-1, step=50, file="path2.csv")
     end subroutine optimize_test
-
 
 end program dof_main
