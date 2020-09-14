@@ -5,6 +5,7 @@ module mod_flight
     use mod_kriging
     use global
     use mod_aircraft
+    use mod_wind
     implicit none
 
     private
@@ -15,6 +16,7 @@ module mod_flight
     real(8) :: p_start, q_start, r_start
     real(8) :: phi_start, tht_start, psi_start
 
+    ! 2020.9.14 追加
     real(8) :: angle_of_attack_lim(2)
     real(8) :: mach_number_lim(2)
     real(8) :: elevator_lim(2)
@@ -42,6 +44,10 @@ module mod_flight
         read(unit, *) b_span
         read(unit, *) ix, iy, iz
         read(unit, *) ixy, ixz, iyz
+        read(unit, *) angle_of_attack_lim
+        read(unit, *) mach_number_lim
+        read(unit, *) elevator_lim
+        read(unit, *) wind_length, wind_power, wind_center
         close(unit)
 
         ! 初期条件定義ファイル
@@ -50,9 +56,6 @@ module mod_flight
         read(unit, *) u_start, v_start, w_start
         read(unit, *) p_start, q_start, r_start
         read(unit, *) phi_start, tht_start, psi_start
-        read(unit, *) angle_of_attack_lim
-        read(unit, *) mach_number_lim
-        read(unit, *) elevator_lim
         close(unit)
 
         ! 単位をラジアンに変更
@@ -65,6 +68,8 @@ module mod_flight
         phi_start = RADIANS * phi_start
         tht_start = RADIANS * tht_start
         psi_start = RADIANS * psi_start
+
+        is_calc_wind = wind_power > 0
     end subroutine read_input
 
 

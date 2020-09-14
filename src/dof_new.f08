@@ -47,7 +47,7 @@ module mod_ga
     real(8) :: thrust_start  =  0    ! 推力入力初期値 (N)
     integer :: n_var_thrust = 400
 
-    integer :: n_obj_ref
+    integer :: n_obj_ref, n_con_ref
 
 
     ! ! 吉田追加
@@ -122,8 +122,8 @@ module mod_ga
     ! #######################################################################
 
     ! GAの初期化
-    subroutine init_ga(n_var, n_obj, pop_size, xover)
-        integer, intent(in) :: n_var, n_obj, pop_size
+    subroutine init_ga(n_var, n_obj, n_con, pop_size, xover)
+        integer, intent(in) :: n_var, n_obj, n_con, pop_size
         character(*), intent(in) :: xover
 
         call optimizer%initialize(nx=n_var,        &
@@ -134,6 +134,7 @@ module mod_ga
                                   mutation="PM")
 
         n_obj_ref = n_obj
+        n_con_ref = n_con
     end subroutine init_ga
 
 
@@ -206,28 +207,34 @@ module mod_ga
         !$omp end do
         !$omp end parallel
 
+        do i = 1, size(ga%population)
+            associate (acs => workspace2d(:, i), &
+                       id => ga%population(i)%indiv%id)
+                call output_path(acs, start=1, end=-1, step=50, &
+                                 file=dirname // "/flight_" // str(i, 4) // "_id=" // str(id) // ".csv")
+            end associate
+        end do
+
         contains
 
         subroutine save_flight_inner(indiv, idx)
             class(TIndiv), intent(in) :: indiv
             integer, intent(in) :: idx
             ! character(*), intent(in) :: dirname
-            character(:), allocatable :: filename
+            ! character(:), allocatable :: filename
             integer :: n_last, end_status
 
             associate (acs => workspace2d(:, idx),    &
-                       variables => indiv%dvariables, &
-                       id => indiv%id)
-                filename = dirname // "/flight_" // str(idx, 4) // "_id=" // str(id) // ".csv"
+                       variables => indiv%dvariables)!, &
+                       ! id => indiv%id)
+                ! filename = dirname // "/flight_" // str(idx, 4) // "_id=" // str(id) // ".csv"
 
                 acs(2:)%calculated = 0
                 call set_elevator(acs, variables(1:n_var_elv))
                 call set_thrust(acs, variables(n_var_elv+1:n_var_elv+n_var_thrust))
                 call flight(acs, n_last, end_status)
 
-                !$omp single
-                call output_path(acs, start=1, end=-1, step=50, file=filename)
-                !$omp end single
+                ! call output_path(acs, start=1, end=-1, step=50, file=filename)
             end associate
         end subroutine save_flight_inner
 
@@ -266,7 +273,7 @@ module mod_ga
         logical, intent(out) :: feasible
         integer, intent(in) :: idx
         real(8) :: ll
-        integer :: n_last, end_status
+        integer :: n_last, end_status, i
 
         ! type(aircraft), allocatable :: ac(:)
         ! real(8), allocatable :: ll(:)
@@ -281,8 +288,7 @@ module mod_ga
         associate (acs => workspace2d(:, idx))
             acs(2:)%calculated = 0
 
-            acs(1)%elevator = elv_start + (variables(1) * 20 - 10)
-            call set_elevator(acs, variables(2:n_var_elv))
+            call set_elevator(acs, variables(1:n_var_elv))
             call set_thrust(acs, variables(n_var_elv+1:n_var_elv+n_var_thrust))
 
             ! 飛行経路を求める
@@ -294,7 +300,7 @@ module mod_ga
 
             ! 評価結果を代入
             allocate(objectives(n_obj_ref))
-            allocate(constraints(2))
+            allocate(constraints(n_con_ref))
 
             associate (aoa0 => acs(1)%angle_of_attack * RADIANS, &
                        elv0 => acs(1)%elevator)
@@ -302,23 +308,35 @@ module mod_ga
                             - (acs(1:n_last)%x - acs(1)%x) * sin(aoa0)) ** 2 &
                      + 0.04 * (acs(1:n_last)%elevator - elv0) ** 2)
             end associate
-            objectives(1) = abs(acs(n_last)%gamt) + ll * dt
-            ! objectives(2) = sum(acs(1:n_last)%thrust) * dt
-            ! if (size(objectives) >= 3) then
-            objectives(2) = abs(acs(n_last)%w_earth)
-            ! objectives(3) = -acs(n_last)%x
-            ! end if
 
-            ! constraints(1) = max(acs(n_last)%angle_of_attack - 20, &
-            !                      0.0, &
-            !                      -acs(n_last)%angle_of_attack)
-            ! constraints(1) = (2 + acs(n_last)%w_earth) * 100
-            constraints(1) = 5 - abs(4770 - acs(n_last)%x)
-            if (end_status == 1) then
-                constraints(2) = 0
-            else
-                constraints(2) = -1e10
-            end if
+            do i = 1, size(objectives)
+                select case (i)
+                case (1)
+                    objectives(i) = abs(acs(n_last)%gamt) + ll * dt
+                case (2)
+                    ! objectives(2) = sum(acs(1:n_last)%thrust) * dt
+                    objectives(i) = abs(acs(n_last)%w_earth)
+                case (3)
+                    objectives(i) = abs(4770 - acs(n_last)%x)
+                end select
+            end do
+
+            do i = 1, size(constraints)
+                select case (i)
+                case (1)
+                    if (end_status == 1) then
+                        constraints(i) = 0
+                    else
+                        constraints(i) = -1e10
+                    end if
+                case (2)
+                    ! constraints(1) = max(acs(n_last)%angle_of_attack - 20, &
+                    !                      0.0, &
+                    !                      -acs(n_last)%angle_of_attack)
+                    ! constraints(1) = (2 + acs(n_last)%w_earth) * 100
+                    constraints(i) = 5 - abs(4770 - acs(n_last)%x)
+                end select
+            end do
 
             ! feasible = end_status == 1 .and. &
             !            acs(n_last)%x > 4769.5 .and. &
@@ -338,11 +356,12 @@ module mod_ga
         real(8) :: r, d_elv, elv
         integer :: in_size, out_size, idx, i
 
-        in_size = size(array)
+        in_size = size(array) - 1
         out_size = size(acs)
         r = dble(in_size) / out_size
 
         ! acs(1)%elevator = elv_start
+        acs(1)%elevator = elv_start + (array(1) * 20 - 10)
 
         do i = 2, out_size
             idx = int(r * (i - 1)) + 1
@@ -471,13 +490,14 @@ program dof_main
         real(8) :: flight_time
         real(8), allocatable :: best(:)
         integer :: start_time, n_control
-        integer :: n_var, n_obj, pop_size, n_gen, n_step!, start, end
+        integer :: n_var, n_obj, n_con, pop_size, n_gen, n_step!, start, end
         integer :: unit
         character(3) :: xover
 
 
         open(newunit=unit, file="params.txt", status="old")
         read(unit, *) n_obj
+        read(unit, *) n_con
         read(unit, *) pop_size
         read(unit, *) n_gen
         read(unit, *) xover
@@ -509,7 +529,7 @@ program dof_main
         ! end block
         workspace2d(1, 2:) = workspace2d(1, 1)
 
-        call init_ga(n_var, n_obj, pop_size, xover)
+        call init_ga(n_var, n_obj, n_con, pop_size, xover)
 
         ! 計算時間計測開始
         call system_clock(start_time)

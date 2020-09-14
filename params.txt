@@ -1,0 +1,5 @@
+3     ! n_obj
+1     ! n_con
+30    ! pop_size
+30000 ! n_gen
+SBX   ! xover

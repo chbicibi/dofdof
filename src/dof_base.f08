@@ -98,12 +98,67 @@ end module mod_calculation
 
 
 !===============================================================================
+! マイクロバーストモジュール
+!===============================================================================
+
+
+module mod_wind
+    implicit none
+
+    private
+    public :: get_wind
+    public :: wind_length, wind_power, wind_center, is_calc_wind
+
+    ! type :: wind
+    !     real(8) :: u, v, w
+    !     real(8) :: u_earth, v_earth, w_earth
+    ! end type wind
+
+
+    real(8) :: wind_length, wind_power, wind_center
+    logical :: is_calc_wind
+
+
+    contains
+
+
+    subroutine get_wind(x, z, tht, wind_u, wind_w)
+        real(8), intent(in) :: x, z, tht
+        real(8), intent(out) :: wind_u, wind_w
+        real(8) :: wind_u_earth, wind_w_earth
+
+        wind_u_earth = 2 * wind_power * (x - wind_center) / wind_length - wind_power
+        wind_w_earth = -4 * wind_power * z / wind_length
+
+        wind_u = cos(tht) * wind_u_earth - sin(tht) * wind_w_earth
+        wind_w = sin(tht) * wind_u_earth + cos(tht) * wind_w_earth
+    end subroutine get_wind
+
+
+    ! subroutine add_wind(ac)
+    !     type(aircraft), intent(inout) :: ac
+    !     real(8) :: wind_u_earth, wind_w_earth, wind_u, wind_w
+
+    !     wind_u_earth = 2 * wind_power * (ac%x - wind_center) / wind_length - wind_power
+    !     wind_w_earth = -4 * wind_power * ac%z / wind_length
+
+    !     wind_u = cos(ac%tht) * wind_u_earth - sin(ac%tht) * wind_w_earth
+    !     wind_w = sin(ac%tht) * wind_u_earth + cos(ac%tht) * wind_w_earth
+
+    !     ac%u = ac%u + wind_u
+    !     ac%w = ac%w + wind_w
+    ! end subroutine add_wind
+
+end module mod_wind
+
+!===============================================================================
 ! 運動計算用モジュール (機体の位置と姿勢を計算する)
 !===============================================================================
 
 module mod_aircraft
     use global
     use mod_calculation
+    use mod_wind
     implicit none
 
     private
@@ -176,6 +231,14 @@ module mod_aircraft
         real(8) :: u, v, w, phi, tht, psi
         real(8) :: u_earth, v_earth, w_earth
         real(8) :: velocity, angle_of_attack, mach_number, gamt
+        real(8) :: wind_u, wind_w ! 2020.9.15 追加
+
+        ! 2020.9.15 追加
+        if (is_calc_wind) then
+            call get_wind(this%x, this%z, this%tht, wind_u, wind_w)
+            this%u = this%u + wind_u
+            this%w = this%w + wind_w
+        end if
 
         ! ここの値は運動計算で求めてある (u, v, w, phi, tht, psi)
         u = this%u
