@@ -416,34 +416,7 @@ module mod_aircraft
         thrust = ac%thrust
         ang_thrust = ac%ang_thrust
 
-        ! 2020.6.11 追加
-        ! s_ref = ac%s_ref          ! 代表面積
-        ! m_body = ac%m_body        ! 機体重量
-        ! mac = ac%mac              ! 機体MAC長
-        ! b_span = ac%b_span        ! 翼スパン
-        ! ix = ac%ix
-        ! iy = ac%iy
-        ! iz = ac%iz
-        ! ixy = ac%ixy
-        ! ixz = ac%ixz
-        ! iyz = ac%iyz              ! 慣性モーメント
-
-        ! ルンゲクッタ法で次ステップの各値を求める
-        ! 2019.6.17 推力項追加
-
-        ! 旧: 推力項無し
-        ! call runge_kutta(func_normal, X, dt, 4, X_next)
-
-        ! 新: 推力項有り
-        ! ref_thrust = ac%thrust         ! 参照用変数に代入
-        ! ref_ang_thrust = ac%ang_thrust ! 参照用変数に代入
-
-        ! 2020.06.17　分離力項あり
-        ! ref_forth = ac%forth           ! 参照用変数に代入
-        ! ref_moment = ac%moment         ! 参照用変数に代入
-
         call solve_differential_equations(X, cx, 0d0, cz, 0d0, cm, 0d0, thrust, ang_thrust, X_next)
-
 
         ! 結果を管理用変数に格納
         ac_next%u = X_next(1)
@@ -456,14 +429,14 @@ module mod_aircraft
         ac_next%tht = X_next(8)
         ac_next%psi = X_next(9)
 
+        ! 機体の座標を計算
+        ac_next%x = ac%x + ac%u_earth * dt
+        ac_next%y = ac%y + ac%v_earth * dt
+        ac_next%z = ac%z + ac%w_earth * dt
+
         ! 追加で求めた値を管理用変数に格納
         call ac_next%set_state
         ac_next%calculated = 1
-
-        ! 機体の座標を計算
-        ac_next%x = ac%x + ac_next%u_earth * dt
-        ac_next%y = ac%y + ac_next%v_earth * dt
-        ac_next%z = ac%z + ac_next%w_earth * dt
     end subroutine calc_motion
 
 

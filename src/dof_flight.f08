@@ -121,20 +121,30 @@ module mod_flight
 
 
     ! 軌道計算サブルーチン
-    subroutine flight(acs, n_last, exit_status)
+    subroutine flight(acs, n_last, exit_status, start)
         type(aircraft), intent(inout) :: acs(:)
         integer, intent(out) :: n_last, exit_status
-        integer :: total_steps, i
+        integer, intent(in), optional :: start
+        integer :: total_steps, i, istart
+        integer :: count = 1
+
+        count = count + 1
+
+        if (present(start)) then
+            istart = start
+        else
+            istart = 1
+        end if
+
+        if (acs(istart)%calculated /= 1) then
+            write(0, "(a)") "Error: initial conditions not calculated"
+            stop 1
+        end if
 
         total_steps = size(acs)
 
-        do i = 1, total_steps - 1
+        do i = istart, total_steps - 1
             acs(i)%t = dt * (i - 1)
-            ! if (i > 1) then
-            !     acs(i)%elevator = acs(i-1)%elevator
-            !     acs(i)%thrust = acs(i-1)%thrust
-            !     acs(i)%ang_thrust = acs(i-1)%ang_thrust
-            ! end if
 
             associate (param => [acs(i)%angle_of_attack, &
                                  acs(i)%elevator,        &
@@ -166,6 +176,8 @@ module mod_flight
         type(aircraft), intent(inout) :: acs(:)
         integer, intent(out) :: n_last, exit_status
         integer :: total_steps, i
+
+        if (acs(1)%calculated /= 1) stop 1
 
         total_steps = size(acs)
 

@@ -8,8 +8,8 @@ PARA    = -fopenmp
 
 DEST     = ../
 
-TARGET  = dof_new.exe
-OBJS    = dof_kriging.o dof_base.o dof_flight.o dof_new.o
+TARGET  = dof_grad.exe
+OBJS    = dof_kriging.o dof_base.o dof_flight.o dof_grad.o
 
 INCLUDE = galib/include
 LIBPATH = galib/lib
@@ -48,4 +48,4 @@ clean:
 
 ###  common ###
 dof_flight.o: dof_kriging.o dof_base.o
-dof_new.o: dof_kriging.o dof_base.o dof_flight.o
+dof_grad.o: dof_kriging.o dof_base.o dof_flight.o
